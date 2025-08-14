@@ -1,3 +1,4 @@
+import { ChevronDownIcon } from '@heroicons/react/24/solid'
 import {
     Accordion,
     AccordionBody,
@@ -23,7 +24,7 @@ const learning_rate_list = [
 ]
 
 const LearningRate = () => {
-    const [openAdvance, setOpenAdvance] = useState<boolean>(false)
+    const [openAdvanced, setOpenAdvanced] = useState<boolean>(false)
     return (
         <Card>
             <CardBody className="flex flex-col gap-3">
@@ -48,10 +49,18 @@ const LearningRate = () => {
                         </Select>
                     </div>
                 </div>
-                <Accordion open={openAdvance}>
+                <Accordion
+                    open={openAdvanced}
+                    icon={
+                        <ChevronDownIcon
+                            strokeWidth={2.5}
+                            className={`mx-auto h-4 w-4 transition-transform ${openAdvanced ? 'rotate-180' : ''}`}
+                        />
+                    }
+                >
                     <AccordionHeader
                         onClick={() => {
-                            setOpenAdvance(!openAdvance)
+                            setOpenAdvanced(!openAdvanced)
                         }}
                     >
                         <Typography variant="h4" className=" text-gray-600">
@@ -60,30 +69,38 @@ const LearningRate = () => {
                     </AccordionHeader>
                     <AccordionBody>
                         <div>
-                            <Typography className="mt-1 mb-1 font-normal" variant="small">
+                            <Typography className="mt-3 mb-3 font-normal" variant="small">
                                 Learning Rate Warmup Steps (% of total steps)
                             </Typography>
-                            <Input defaultValue={'0.05'} label="lr_warmup_steps" />
+                            <Input defaultValue={'0.05'} label="lr_warmup_steps" type="number" />
                         </div>
                         <div>
-                            <Typography className="mt-1 mb-1 font-normal" variant="small">
+                            <Typography className="mt-3 mb-3 font-normal" variant="small">
                                 Learning Rate Scheduler Power (using with polynomial scheduler)
                             </Typography>
-                            <Input defaultValue={'1'} label="lr_scheduler_power" />
+                            <Input defaultValue={'1'} label="lr_scheduler_power" type="number" />
                         </div>
                         <div>
-                            <Typography className="mt-1 mb-1 font-normal" variant="small">
+                            <Typography className="mt-3 mb-3 font-normal" variant="small">
                                 Learning Rate Minimum Learning Rate Ratio (using with
                                 cosine_with_min_lr scheduler)
                             </Typography>
-                            <Input defaultValue={'0.25'} label="lr_scheduler_min_lr_ratio" />
+                            <Input
+                                defaultValue={'0.25'}
+                                label="lr_scheduler_min_lr_ratio"
+                                type="number"
+                            />
                         </div>
                         <div>
-                            <Typography className="mt-1 mb-1 font-normal" variant="small">
+                            <Typography className="mt-3 mb-3 font-normal" variant="small">
                                 Learning Rate Scheduler Number of Cycles (using with
                                 cosine_with_restarts scheduler)
                             </Typography>
-                            <Input defaultValue={'3'} label="lr_scheduler_num_cycles" />
+                            <Input
+                                defaultValue={'3'}
+                                label="lr_scheduler_num_cycles"
+                                type="number"
+                            />
                         </div>
                     </AccordionBody>
                 </Accordion>

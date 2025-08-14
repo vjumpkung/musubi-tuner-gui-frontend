@@ -1,4 +1,12 @@
-import { Card, CardBody, Checkbox, Option, Select, Typography } from '@material-tailwind/react'
+import {
+    Card,
+    CardBody,
+    Checkbox,
+    Input,
+    Option,
+    Select,
+    Typography
+} from '@material-tailwind/react'
 
 const timesteps_sampling_choice = [
     'sigma',
@@ -43,6 +51,36 @@ const AdvancedSettings = () => {
                         </Option>
                     ))}
                 </Select>
+                <div className="flex flex-row gap-3 justify-between w-full">
+                    <div className="flex-1">
+                        <Typography className="" variant="lead">
+                            Discrete Flow Shift
+                        </Typography>
+
+                        <Input label="Value" defaultValue={1.0} />
+                    </div>
+                    <div className="flex-1">
+                        <Typography className="" variant="lead">
+                            Max Data Loader n workers (for faster dataset loading)
+                        </Typography>
+                        <Input label="Value" defaultValue={1} />
+                    </div>
+                </div>
+                <Typography className="" variant="lead">
+                    Cache Text Encoder Batch Size
+                </Typography>
+                <Input label="Value" defaultValue={16} />
+                <Typography className="" variant="lead">
+                    Cross Attention
+                </Typography>
+                <Select label="Cross Attention">
+                    <Option value={'sdpa'}>sdpa</Option>
+                    <Option value={'xformers'}>xformers</Option>
+                </Select>
+                <Typography className="" variant="lead">
+                    Extra Args
+                </Typography>
+                <Input label="extra args goes here" />
             </CardBody>
         </Card>
     )
