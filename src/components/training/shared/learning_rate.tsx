@@ -40,7 +40,7 @@ const LearningRate = () => {
                         Learning Rate Scheduler
                     </Typography>
                     <div>
-                        <Select label="Select Task">
+                        <Select label="Select Scheduler">
                             {learning_rate_list.map((item, idx) => (
                                 <Option key={idx + item} value={item}>
                                     {item}
@@ -68,39 +68,49 @@ const LearningRate = () => {
                         </Typography>
                     </AccordionHeader>
                     <AccordionBody>
-                        <div>
-                            <Typography className="mt-3 mb-3 font-normal" variant="small">
-                                Learning Rate Warmup Steps (% of total steps)
-                            </Typography>
-                            <Input defaultValue={'0.05'} label="lr_warmup_steps" type="number" />
+                        <div className="flex flex-row gap-3">
+                            <div className="flex-1">
+                                <Typography className="mt-3 mb-3 font-normal" variant="small">
+                                    Learning Rate Warmup Steps (% of total steps)
+                                </Typography>
+                                <Input
+                                    defaultValue={'0.05'}
+                                    label="lr_warmup_steps"
+                                    type="number"
+                                />
+                            </div>
                         </div>
-                        <div>
-                            <Typography className="mt-3 mb-3 font-normal" variant="small">
-                                Learning Rate Scheduler Power (using with polynomial scheduler)
-                            </Typography>
-                            <Input defaultValue={'1'} label="lr_scheduler_power" type="number" />
-                        </div>
-                        <div>
-                            <Typography className="mt-3 mb-3 font-normal" variant="small">
-                                Learning Rate Minimum Learning Rate Ratio (using with
-                                cosine_with_min_lr scheduler)
-                            </Typography>
-                            <Input
-                                defaultValue={'0.25'}
-                                label="lr_scheduler_min_lr_ratio"
-                                type="number"
-                            />
-                        </div>
-                        <div>
-                            <Typography className="mt-3 mb-3 font-normal" variant="small">
-                                Learning Rate Scheduler Number of Cycles (using with
-                                cosine_with_restarts scheduler)
-                            </Typography>
-                            <Input
-                                defaultValue={'3'}
-                                label="lr_scheduler_num_cycles"
-                                type="number"
-                            />
+                        <div className="flex flex-row gap-3">
+                            <div className="flex-1">
+                                <Typography className="mt-3 mb-3 font-normal" variant="small">
+                                    Learning Rate Scheduler Power
+                                </Typography>
+                                <Input
+                                    defaultValue={'1'}
+                                    label="lr_scheduler_power"
+                                    type="number"
+                                />
+                            </div>
+                            <div className="flex-1">
+                                <Typography className="mt-3 mb-3 font-normal" variant="small">
+                                    Learning Rate Minimum Learning Rate Ratio
+                                </Typography>
+                                <Input
+                                    defaultValue={'0.25'}
+                                    label="lr_scheduler_min_lr_ratio"
+                                    type="number"
+                                />
+                            </div>
+                            <div className="flex-1">
+                                <Typography className="mt-3 mb-3 font-normal" variant="small">
+                                    Learning Rate Scheduler Number of Cycles
+                                </Typography>
+                                <Input
+                                    defaultValue={'3'}
+                                    label="lr_scheduler_num_cycles"
+                                    type="number"
+                                />
+                            </div>
                         </div>
                     </AccordionBody>
                 </Accordion>

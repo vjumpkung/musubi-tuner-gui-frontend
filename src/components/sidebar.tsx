@@ -1,3 +1,4 @@
+import useMenuBar, { Menu } from '../hooks/useMenubar'
 import {
     ChevronDownIcon,
     ChevronRightIcon,
@@ -22,6 +23,8 @@ import { useState } from 'react'
 const SideBar = () => {
     const [openTraining, setOpenTraining] = useState<boolean>(true)
     const [openInference, setOpenInference] = useState<boolean>(false)
+
+    const setMenuBar = useMenuBar((state) => state.setMenuBar)
 
     return (
         <Card className="h-screen w-full max-w-[20rem] p-4 shadow-xl shadow-blue-gray-900/5 fixed z-1 overflow-x-hidden">
@@ -54,23 +57,35 @@ const SideBar = () => {
                     </ListItem>
                     <AccordionBody className="py-1">
                         <List className="p-0">
-                            <ListItem>
+                            <ListItem onClick={() => setMenuBar(Menu.HV_TRAINER)}>
                                 <ListItemPrefix>
                                     <ChevronRightIcon strokeWidth={3} className="h-3 w-5" />
                                 </ListItemPrefix>
-                                WAN Network Trainer
+                                Hunyuan Video
                             </ListItem>
-                            <ListItem>
+                            <ListItem onClick={() => setMenuBar(Menu.FRAMEPACK_TRAINER)}>
                                 <ListItemPrefix>
                                     <ChevronRightIcon strokeWidth={3} className="h-3 w-5" />
                                 </ListItemPrefix>
-                                QWEN Image Network Trainer
+                                Framepack
                             </ListItem>
-                            <ListItem>
+                            <ListItem onClick={() => setMenuBar(Menu.WAN_TRAINER)}>
                                 <ListItemPrefix>
                                     <ChevronRightIcon strokeWidth={3} className="h-3 w-5" />
                                 </ListItemPrefix>
-                                Flux Kontext Network Trainer
+                                WAN
+                            </ListItem>
+                            <ListItem onClick={() => setMenuBar(Menu.KONTEXT_TRAINER)}>
+                                <ListItemPrefix>
+                                    <ChevronRightIcon strokeWidth={3} className="h-3 w-5" />
+                                </ListItemPrefix>
+                                Flux Kontext Dev
+                            </ListItem>
+                            <ListItem onClick={() => setMenuBar(Menu.QWEN_TRAINER)}>
+                                <ListItemPrefix>
+                                    <ChevronRightIcon strokeWidth={3} className="h-3 w-5" />
+                                </ListItemPrefix>
+                                QWEN Image
                             </ListItem>
                         </List>
                     </AccordionBody>

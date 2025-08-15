@@ -25,9 +25,8 @@ const AdvancedSettings = () => {
         <Card>
             <CardBody className="flex flex-col gap-3">
                 <Typography variant="h3">Advanced Settings</Typography>
-                <div className="flex flex-row gap-3 justify-between w-full">
-                    <Checkbox label={<Typography className="font-normal">fp8-base</Typography>} />
-                    <Checkbox label={<Typography className="font-normal">fp8-scaled</Typography>} />
+                <div className="flex flex-row gap-3 w-full">
+                    <Checkbox label={<Typography className="font-normal">fp8</Typography>} />
                     <Checkbox
                         label={
                             <Typography className="font-normal">Gradient Checkpointing</Typography>
