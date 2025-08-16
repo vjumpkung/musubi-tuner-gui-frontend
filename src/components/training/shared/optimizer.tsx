@@ -48,9 +48,9 @@ const Optimizer = () => (
                 </div>
                 <div className="flex-1">
                     <Typography className="mt-1 mb-1" variant="lead">
-                        Optimizer args
+                        Optimizer args (Optional)
                     </Typography>
-                    <Input label="Additional optimizer args (optional)" />
+                    <Input label="Additional optimizer args" />
                 </div>
             </div>
         </CardBody>

@@ -24,6 +24,12 @@ const WanModelLoader = () => (
             </div>
             <div>
                 <Typography className="mt-1 mb-1" variant="lead">
+                    CLIP (for i2v)
+                </Typography>
+                <Input label="Put clip path" />
+            </div>
+            <div>
+                <Typography className="mt-1 mb-1" variant="lead">
                     VAE
                 </Typography>
                 <Input label="Put vae path" />

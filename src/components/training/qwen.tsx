@@ -1,3 +1,4 @@
+import QwenAdditional from './model_specific/qwen/qwen_additional'
 import QwenModelLoader from './model_specific/qwen/qwen_model_loader'
 import AdvancedSettings from './shared/advanced_settings'
 import HuggingfaceUpload from './shared/hf_upload'
@@ -20,6 +21,7 @@ const QwenTrainer = () => (
             <Optimizer />
             <LearningRate />
             <AdvancedSettings />
+            <QwenAdditional />
             <HuggingfaceUpload />
             <TrainingButton />
         </div>

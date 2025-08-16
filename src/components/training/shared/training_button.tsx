@@ -1,4 +1,4 @@
-import { Button, Card, CardBody, Typography } from '@material-tailwind/react'
+import { Button, Card, CardBody } from '@material-tailwind/react'
 
 const TrainingButton = () => (
     <Card>

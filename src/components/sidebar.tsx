@@ -22,7 +22,7 @@ import { useState } from 'react'
 
 const SideBar = () => {
     const [openTraining, setOpenTraining] = useState<boolean>(true)
-    const [openInference, setOpenInference] = useState<boolean>(false)
+    const [openInference, setOpenInference] = useState<boolean>(true)
 
     const setMenuBar = useMenuBar((state) => state.setMenuBar)
 
@@ -90,25 +90,74 @@ const SideBar = () => {
                         </List>
                     </AccordionBody>
                 </Accordion>
-                <ListItem>
-                    <ListItemPrefix>
-                        <PhotoIcon className="w-5 h-5" />
-                    </ListItemPrefix>
-                    Inference
-                </ListItem>
-                <ListItem>
+                <Accordion
+                    open={openInference}
+                    icon={
+                        <ChevronDownIcon
+                            strokeWidth={2.5}
+                            className={`mx-auto h-4 w-4 transition-transform ${openInference ? 'rotate-180' : ''}`}
+                        />
+                    }
+                >
+                    <ListItem className="p-0">
+                        <AccordionHeader
+                            onClick={() => setOpenInference(!openInference)}
+                            className="border-b-0 p-3"
+                        >
+                            <ListItemPrefix>
+                                <PhotoIcon className="w-5 h-5" />
+                            </ListItemPrefix>
+                            <Typography className="mr-auto font-normal">Inference</Typography>
+                        </AccordionHeader>
+                    </ListItem>
+                    <AccordionBody className="py-1">
+                        <List className="p-0">
+                            <ListItem onClick={() => setMenuBar(Menu.HV_INFERENCE)}>
+                                <ListItemPrefix>
+                                    <ChevronRightIcon strokeWidth={3} className="h-3 w-5" />
+                                </ListItemPrefix>
+                                Hunyuan Video
+                            </ListItem>
+                            <ListItem onClick={() => setMenuBar(Menu.FRAMEPACK_INFERENCE)}>
+                                <ListItemPrefix>
+                                    <ChevronRightIcon strokeWidth={3} className="h-3 w-5" />
+                                </ListItemPrefix>
+                                Framepack
+                            </ListItem>
+                            <ListItem onClick={() => setMenuBar(Menu.WAN_INFERENCE)}>
+                                <ListItemPrefix>
+                                    <ChevronRightIcon strokeWidth={3} className="h-3 w-5" />
+                                </ListItemPrefix>
+                                WAN
+                            </ListItem>
+                            <ListItem onClick={() => setMenuBar(Menu.KONTEXT_INFERENCE)}>
+                                <ListItemPrefix>
+                                    <ChevronRightIcon strokeWidth={3} className="h-3 w-5" />
+                                </ListItemPrefix>
+                                Flux Kontext Dev
+                            </ListItem>
+                            <ListItem onClick={() => setMenuBar(Menu.QWEN_INFERENCE)}>
+                                <ListItemPrefix>
+                                    <ChevronRightIcon strokeWidth={3} className="h-3 w-5" />
+                                </ListItemPrefix>
+                                QWEN Image
+                            </ListItem>
+                        </List>
+                    </AccordionBody>
+                </Accordion>
+                <ListItem onClick={() => setMenuBar(Menu.LOGS)}>
                     <ListItemPrefix>
                         <CommandLineIcon className="w-5 h-5" />
                     </ListItemPrefix>
                     Logs
                 </ListItem>
-                <ListItem>
+                <ListItem onClick={() => setMenuBar(Menu.SETTINGS)}>
                     <ListItemPrefix>
                         <Cog6ToothIcon className="w-5 h-5" />
                     </ListItemPrefix>
                     Settings
                 </ListItem>
-                <ListItem>
+                <ListItem onClick={() => setMenuBar(Menu.ABOUT)}>
                     <ListItemPrefix>
                         <InformationCircleIcon className="h-5 w-5" />
                     </ListItemPrefix>

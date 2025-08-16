@@ -1,3 +1,4 @@
+import WanAdditional from './model_specific/wan/wan_additional'
 import WanModelLoader from './model_specific/wan/wan_model_loader'
 import WanTask from './model_specific/wan/wan_task'
 import AdvancedSettings from './shared/advanced_settings'
@@ -22,6 +23,7 @@ const WanTrainer = () => (
             <Optimizer />
             <LearningRate />
             <AdvancedSettings />
+            <WanAdditional />
             <HuggingfaceUpload />
             <TrainingButton />
         </div>

@@ -4,17 +4,19 @@ const TrainingOutput = () => (
     <Card>
         <CardBody className="flex flex-col gap-3">
             <Typography variant="h3">LoRA Project Configuration</Typography>
-            <div>
-                <Typography className="mt-1 mb-1" variant="lead">
-                    Output name
-                </Typography>
-                <Input label="Trained Model output name" />
-            </div>
-            <div>
-                <Typography className="mt-1 mb-1" variant="lead">
-                    Output directory
-                </Typography>
-                <Input label="Output directory for trained model" />
+            <div className="flex flex-row gap-3 justify-between w-full">
+                <div className="flex-1">
+                    <Typography className="mt-1 mb-1" variant="lead">
+                        Output name
+                    </Typography>
+                    <Input label="Trained Model output name" />
+                </div>
+                <div className="flex-1">
+                    <Typography className="mt-1 mb-1" variant="lead">
+                        Output directory
+                    </Typography>
+                    <Input label="Output directory for trained model" />
+                </div>
             </div>
             <div>
                 <Typography className="mt-1 mb-1" variant="lead">
