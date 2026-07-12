@@ -7,6 +7,7 @@ import {
     ChevronRightIcon,
     Cog6ToothIcon,
     CommandLineIcon,
+    CircleStackIcon,
     CloudArrowDownIcon,
     InformationCircleIcon,
     SparklesIcon,
@@ -206,6 +207,12 @@ const SideBar = ({ collapsed, onToggleCollapsed }: SideBarProps) => {
                             <CloudArrowDownIcon className="h-5 w-5" />
                         </ListItemPrefix>
                         Downloads
+                    </ListItem>
+                    <ListItem {...menuItemProps(Menu.DATASETS)}>
+                        <ListItemPrefix>
+                            <CircleStackIcon className="h-5 w-5" />
+                        </ListItemPrefix>
+                        Datasets
                     </ListItem>
                     <ListItem {...menuItemProps(Menu.LOGS)}>
                         <ListItemPrefix>

@@ -20,6 +20,9 @@ export enum Menu {
     // downloads
     DOWNLOADS = 'DOWNLOADS',
 
+    // datasets
+    DATASETS = 'DATASETS',
+
     // logs
     LOGS = 'LOGS',
     SETTINGS = 'SETTINGS',

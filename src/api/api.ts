@@ -26,6 +26,18 @@ export type DatasetConfig = DatasetSummary & {
     warnings?: string[]
 }
 
+export type CreateManagedDatasetInput = {
+    name: string
+    description?: string
+    mediaType: 'image' | 'video'
+    resolution: [number, number]
+    targetFrames?: number[]
+    files: File[]
+    captions: string[]
+    captionFiles?: File[]
+    controlFiles?: File[]
+}
+
 export type TrainingJobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
 
 export type TrainingStage = {
@@ -100,6 +112,27 @@ export const datasetsApi = {
         form.append('file', file)
         if (name) form.append('name', name)
         return (await apiClient.post<DatasetConfig>('/api/datasets/import', form)).data
+    },
+    createManaged: async (input: CreateManagedDatasetInput) => {
+        const form = new FormData()
+        form.append('name', input.name)
+        if (input.description) form.append('description', input.description)
+        form.append('media_type', input.mediaType)
+        form.append('resolution', JSON.stringify(input.resolution))
+        if (input.mediaType === 'video' && input.targetFrames) {
+            form.append('target_frames', JSON.stringify(input.targetFrames))
+        }
+        form.append('captions', JSON.stringify(input.captions))
+        input.files.forEach((file) => form.append('files', file))
+        input.captionFiles?.forEach((file) => form.append('caption_files', file))
+        input.controlFiles?.forEach((file) => form.append('control_files', file))
+
+        return (
+            await apiClient.post<DatasetConfig>('/api/datasets/managed', form, {
+                // Large video datasets can legitimately take much longer than the shared API timeout.
+                timeout: 0
+            })
+        ).data
     },
     remove: async (configId: string) => {
         await apiClient.delete(`/api/datasets/${configId}`)

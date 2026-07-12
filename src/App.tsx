@@ -1,4 +1,5 @@
 import About from './about/about'
+import Datasets from './components/datasets/datasets'
 import Downloads from './components/downloads/downloads'
 import LogViewer from './components/logs/logs'
 import Settings from './components/settings/settings'
@@ -45,6 +46,7 @@ export default function App() {
                     <TrainingWorkspace key={trainingProfile.id} profile={trainingProfile} />
                 ) : null}
                 {menu === Menu.DOWNLOADS ? <Downloads /> : null}
+                {menu === Menu.DATASETS ? <Datasets /> : null}
                 {menu === Menu.LOGS ? <LogViewer /> : null}
                 {menu === Menu.SETTINGS ? <Settings /> : null}
                 {menu === Menu.ABOUT ? <About /> : null}
