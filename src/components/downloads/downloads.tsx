@@ -1,3 +1,5 @@
+import { type DownloadJob, type DownloadStatus, downloadsApi, queryKeys } from '../../api/api'
+import { getApiErrorMessage } from '../../api/client'
 import { cn } from '../../utils/cn'
 import { downloadFamilies, downloadModels, type DownloadModel } from './catalog'
 import {
@@ -10,42 +12,12 @@ import {
     StopIcon
 } from '@heroicons/react/24/outline'
 import { Button, Card, CardBody, Input, Option, Select, Typography } from '@material-tailwind/react'
-import { useEffect, useMemo, useState } from 'react'
+import { useMutation, useQueries, useQueryClient } from '@tanstack/react-query'
+import { useMemo, useState } from 'react'
 
-type DownloadStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
-
-type DownloadJob = {
-    id: string
-    script_id: string
-    status: DownloadStatus
-    progress?: number
-    current_file?: string
-    message?: string
-    error?: string
-}
-
-type ApiError = {
-    detail?: string
-}
-
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')
 const activeStatuses: DownloadStatus[] = ['queued', 'running']
 
 const isActive = (job?: DownloadJob) => job && activeStatuses.includes(job.status)
-
-const readResponse = async <T,>(response: Response): Promise<T> => {
-    const data = (await response.json().catch(() => null)) as T | ApiError | null
-
-    if (!response.ok) {
-        const detail =
-            data && typeof data === 'object' && 'detail' in data
-                ? (data as ApiError).detail
-                : undefined
-        throw new Error(detail || `Request failed with status ${response.status}`)
-    }
-
-    return data as T
-}
 
 const jobStyles: Record<DownloadStatus, string> = {
     queued: 'bg-amber-50 text-amber-800 ring-amber-200',
@@ -201,12 +173,11 @@ const DownloadRow = ({
 }
 
 const Downloads = () => {
+    const queryClient = useQueryClient()
     const [destination, setDestination] = useState('.')
     const [query, setQuery] = useState('')
     const [family, setFamily] = useState(downloadFamilies[0])
-    const [jobs, setJobs] = useState<Record<string, DownloadJob>>({})
-    const [startingId, setStartingId] = useState<string>()
-    const [requestError, setRequestError] = useState<string>()
+    const [jobIds, setJobIds] = useState<Record<string, string>>({})
 
     const visibleModels = useMemo(() => {
         const normalizedQuery = query.trim().toLowerCase()
@@ -223,80 +194,47 @@ const Downloads = () => {
         })
     }, [family, query])
 
-    const activeJobIds = Object.values(jobs)
-        .filter((job) => isActive(job))
-        .map((job) => job.id)
-        .sort()
-        .join(',')
+    const trackedJobs = Object.entries(jobIds)
+    const jobQueries = useQueries({
+        queries: trackedJobs.map(([, jobId]) => ({
+            queryKey: queryKeys.download(jobId),
+            queryFn: () => downloadsApi.get(jobId),
+            refetchInterval: (jobQuery: { state: { data?: DownloadJob } }) =>
+                isActive(jobQuery.state.data) ? 1_500 : false
+        }))
+    })
+    const jobs = Object.fromEntries(
+        trackedJobs.flatMap(([modelId], index) => {
+            const job = jobQueries[index]?.data
+            return job ? [[modelId, job]] : []
+        })
+    ) as Record<string, DownloadJob>
 
-    useEffect(() => {
-        if (!activeJobIds) return
-
-        const pollJobs = async () => {
-            const ids = activeJobIds.split(',')
-            const results = await Promise.allSettled(
-                ids.map(async (id) => {
-                    const response = await fetch(`${API_BASE_URL}/api/downloads/${id}`)
-                    return readResponse<DownloadJob>(response)
-                })
-            )
-
-            setJobs((current) => {
-                const next = { ...current }
-                results.forEach((result) => {
-                    if (result.status === 'fulfilled') {
-                        next[result.value.script_id] = result.value
-                    }
-                })
-                return next
-            })
+    const startMutation = useMutation({
+        mutationFn: ({ model }: { model: DownloadModel }) =>
+            downloadsApi.start(model.id, destination.trim()),
+        onSuccess: (job, { model }) => {
+            queryClient.setQueryData(queryKeys.download(job.id), job)
+            setJobIds((current) => ({ ...current, [model.id]: job.id }))
         }
+    })
 
-        const interval = window.setInterval(pollJobs, 1500)
-        return () => window.clearInterval(interval)
-    }, [activeJobIds])
+    const cancelMutation = useMutation({
+        mutationFn: ({ job }: { model: DownloadModel; job: DownloadJob }) =>
+            downloadsApi.cancel(job.id),
+        onSuccess: (job) => queryClient.setQueryData(queryKeys.download(job.id), job)
+    })
 
-    const startDownload = async (model: DownloadModel) => {
-        setRequestError(undefined)
-        setStartingId(model.id)
+    const startDownload = (model: DownloadModel) => startMutation.mutate({ model })
+    const cancelDownload = (model: DownloadModel, job: DownloadJob) =>
+        cancelMutation.mutate({ model, job })
 
-        try {
-            const response = await fetch(`${API_BASE_URL}/api/downloads`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    script_id: model.id,
-                    destination: destination.trim()
-                })
-            })
-            const job = await readResponse<DownloadJob>(response)
-            setJobs((current) => ({ ...current, [model.id]: job }))
-        } catch (error) {
-            setRequestError(
-                error instanceof Error
-                    ? error.message
-                    : 'The download service could not be reached.'
-            )
-        } finally {
-            setStartingId(undefined)
-        }
-    }
-
-    const cancelDownload = async (model: DownloadModel, job: DownloadJob) => {
-        setRequestError(undefined)
-
-        try {
-            const response = await fetch(`${API_BASE_URL}/api/downloads/${job.id}/cancel`, {
-                method: 'POST'
-            })
-            const cancelledJob = await readResponse<DownloadJob>(response)
-            setJobs((current) => ({ ...current, [model.id]: cancelledJob }))
-        } catch (error) {
-            setRequestError(
-                error instanceof Error ? error.message : 'The download could not be cancelled.'
-            )
-        }
-    }
+    const requestError = startMutation.error
+        ? getApiErrorMessage(startMutation.error, 'The download could not be started.')
+        : cancelMutation.error
+          ? getApiErrorMessage(cancelMutation.error, 'The download could not be cancelled.')
+          : undefined
+    const startingId = startMutation.isPending ? startMutation.variables.model.id : undefined
 
     const completedCount = Object.values(jobs).filter((job) => job.status === 'completed').length
 

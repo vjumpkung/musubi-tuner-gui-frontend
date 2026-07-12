@@ -1,62 +1,56 @@
-'use client'
-
 import { FitAddon } from '@xterm/addon-fit'
 import { Terminal } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
 import { useEffect, useRef } from 'react'
 
-const TerminalComponent = () => {
+type TerminalComponentProps = {
+    content: string
+    emptyMessage: string
+}
+
+const TerminalComponent = ({ content, emptyMessage }: TerminalComponentProps) => {
     const terminalRef = useRef<HTMLDivElement>(null)
     const terminalInstance = useRef<Terminal | null>(null)
     const fitAddon = useRef<FitAddon | null>(null)
 
     useEffect(() => {
-        const loadTerminal = async () => {
-            if (typeof window !== 'undefined' && terminalRef.current) {
-                // Instantiate terminal and addon
-                terminalInstance.current = new Terminal({
-                    fontSize: 16,
-                    fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
-                    cursorBlink: false
-                })
-                fitAddon.current = new FitAddon()
+        if (!terminalRef.current) return
 
-                // Load the addon and open the terminal in the container
-                terminalInstance.current.loadAddon(fitAddon.current)
-                terminalInstance.current.open(terminalRef.current)
+        const terminal = new Terminal({
+            fontSize: 14,
+            fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
+            cursorBlink: false,
+            convertEol: true,
+            theme: { background: '#020617' }
+        })
+        const fit = new FitAddon()
+        terminal.loadAddon(fit)
+        terminal.open(terminalRef.current)
+        terminalInstance.current = terminal
+        fitAddon.current = fit
+        requestAnimationFrame(() => fit.fit())
 
-                terminalInstance.current.writeln('Log goes here.')
-
-                // Use requestAnimationFrame to delay fitting until after render/layout
-                requestAnimationFrame(() => {
-                    fitAddon.current?.fit()
-                })
-            }
-        }
-
-        loadTerminal()
-
-        // Add resize listener to update the terminal size dynamically
-        const handleResize = () => {
-            if (fitAddon.current) {
-                // Use requestAnimationFrame for smoother updates
-                requestAnimationFrame(() => {
-                    fitAddon.current?.fit()
-                })
-            }
-        }
-
+        const handleResize = () => requestAnimationFrame(() => fit.fit())
         window.addEventListener('resize', handleResize)
 
         return () => {
             window.removeEventListener('resize', handleResize)
-            terminalInstance.current?.dispose()
+            terminal.dispose()
+            terminalInstance.current = null
+            fitAddon.current = null
         }
     }, [])
 
+    useEffect(() => {
+        const terminal = terminalInstance.current
+        if (!terminal) return
+        terminal.reset()
+        terminal.write(content || `\x1b[90m${emptyMessage}\x1b[0m`)
+    }, [content, emptyMessage])
+
     return (
-        <div className="bg-black p-2">
-            <div ref={terminalRef} style={{ height: 'calc(100vh - 170px)' }} />
+        <div className="bg-slate-950 p-2">
+            <div ref={terminalRef} className="h-[55vh] min-h-80" />
         </div>
     )
 }

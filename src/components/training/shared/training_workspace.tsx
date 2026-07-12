@@ -1,3 +1,5 @@
+import { datasetsApi, queryKeys, trainingApi } from '../../../api/api'
+import { getApiErrorMessage } from '../../../api/client'
 import useAccelerationSettings, {
     type AccelerationSettings,
     defaultAccelerationSettings
@@ -38,6 +40,7 @@ import {
     Select,
     Typography
 } from '@material-tailwind/react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { type ChangeEvent, type ReactNode, useMemo, useRef, useState } from 'react'
 
 const schedulerOptions = [
@@ -377,14 +380,65 @@ const hasValidAccelerationSettings = (value: unknown): value is AccelerationSett
     Object.keys(defaultAccelerationSettings).every((key) => typeof value[key] === 'string')
 
 const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
+    const queryClient = useQueryClient()
     const [values, setValues] = useState<TrainingValues>(() => ({ ...profile.defaults }))
     const [openAdvanced, setOpenAdvanced] = useState(false)
     const [openPublishing, setOpenPublishing] = useState(false)
     const [copyStatus, setCopyStatus] = useState('')
     const [configStatus, setConfigStatus] = useState('')
+    const [selectedDatasetId, setSelectedDatasetId] = useState('')
+    const [skipCacheStages, setSkipCacheStages] = useState(false)
     const importInputRef = useRef<HTMLInputElement>(null)
+    const datasetImportInputRef = useRef<HTMLInputElement>(null)
     const accelerationSettings = useAccelerationSettings((state) => state.settings)
     const setAccelerationSettings = useAccelerationSettings((state) => state.setSettings)
+    const datasetsQuery = useQuery({
+        queryKey: queryKeys.datasets,
+        queryFn: datasetsApi.list
+    })
+    const queueQuery = useQuery({
+        queryKey: queryKeys.queue,
+        queryFn: trainingApi.getQueue,
+        refetchInterval: 1_500
+    })
+    const datasets = datasetsQuery.data ?? []
+    const effectiveDatasetId = selectedDatasetId || datasets[0]?.id || ''
+
+    const importDatasetMutation = useMutation({
+        mutationFn: (file: File) => datasetsApi.import(file),
+        onSuccess: async (dataset) => {
+            setSelectedDatasetId(dataset.id)
+            setValue('datasetConfig', `${dataset.name}.toml`)
+            await queryClient.invalidateQueries({ queryKey: queryKeys.datasets })
+            setConfigStatus(`Dataset config “${dataset.name}” imported.`)
+        }
+    })
+
+    const createJobMutation = useMutation({
+        mutationFn: () =>
+            trainingApi.createJob({
+                name: value('outputName').trim(),
+                profile_id: profile.id,
+                dataset_config_id: effectiveDatasetId,
+                skip_cache_stages: skipCacheStages,
+                values: { ...values, ...accelerationSettings }
+            }),
+        onSuccess: async (job) => {
+            await Promise.all([
+                queryClient.invalidateQueries({ queryKey: queryKeys.jobs }),
+                queryClient.invalidateQueries({ queryKey: queryKeys.queue })
+            ])
+            setCopyStatus(`Job “${job.name}” added to the queue.`)
+        }
+    })
+
+    const queueMutation = useMutation({
+        mutationFn: () =>
+            queueQuery.data?.state === 'running'
+                ? trainingApi.pauseQueue()
+                : trainingApi.startQueue(),
+        onSuccess: (queue) => queryClient.setQueryData(queryKeys.queue, queue)
+    })
 
     const setValue = (key: string, value: TrainingValue) => {
         setValues((current) => ({ ...current, [key]: value }))
@@ -397,14 +451,16 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
         !field.when || values[field.when.key] === field.when.value
     const requiredFields = [
         { key: 'musubiPath', label: 'Musubi Tuner directory' },
-        { key: 'datasetConfig', label: 'Dataset config' },
         { key: 'outputName', label: 'Output name' },
         { key: 'outputDir', label: 'Output directory' },
         ...profile.modelFields
             .filter((field) => field.required && fieldIsVisible(field))
             .map((field) => ({ key: field.key, label: field.label }))
     ]
-    const missingFields = requiredFields.filter((field) => !value(field.key).trim())
+    const missingFields = [
+        ...requiredFields.filter((field) => !value(field.key).trim()),
+        ...(!effectiveDatasetId ? [{ key: 'datasetConfig', label: 'Dataset config' }] : [])
+    ]
     const completion = Math.round(
         ((requiredFields.length - missingFields.length) / requiredFields.length) * 100
     )
@@ -509,6 +565,27 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
         }
     }
 
+    const importDatasetConfig = (event: ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0]
+        if (file) importDatasetMutation.mutate(file)
+        event.target.value = ''
+    }
+
+    const integrationError = importDatasetMutation.error
+        ? getApiErrorMessage(
+              importDatasetMutation.error,
+              'The dataset config could not be imported.'
+          )
+        : createJobMutation.error
+          ? getApiErrorMessage(createJobMutation.error, 'The training job could not be created.')
+          : queueMutation.error
+            ? getApiErrorMessage(queueMutation.error, 'The queue state could not be changed.')
+            : datasetsQuery.error
+              ? getApiErrorMessage(datasetsQuery.error, 'Dataset configs could not be loaded.')
+              : queueQuery.error
+                ? getApiErrorMessage(queueQuery.error, 'The training queue could not be loaded.')
+                : undefined
+
     return (
         <main className="mx-auto w-full max-w-7xl p-3 pb-12 sm:p-5 sm:pb-12">
             <header className="mb-6 rounded-xl border border-blue-gray-100 bg-white p-5 shadow-sm sm:p-7">
@@ -583,6 +660,16 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
                 </p>
             </header>
 
+            {integrationError ? (
+                <div
+                    role="alert"
+                    className="mb-5 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800"
+                >
+                    <p className="font-semibold">Backend integration error</p>
+                    <p className="mt-1">{integrationError}</p>
+                </div>
+            ) : null}
+
             <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_21rem] xl:items-start">
                 <div className="flex min-w-0 flex-col gap-5">
                     <SectionCard
@@ -602,16 +689,48 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
                                 value={value('musubiPath')}
                                 onChange={(next) => setValue('musubiPath', next)}
                             />
-                            <TextField
-                                field={{
-                                    key: 'datasetConfig',
-                                    label: 'Dataset config',
-                                    helper: 'Path to the dataset_config.toml file.',
-                                    required: true
-                                }}
-                                value={value('datasetConfig')}
-                                onChange={(next) => setValue('datasetConfig', next)}
-                            />
+                            <div className="min-w-0">
+                                <input
+                                    ref={datasetImportInputRef}
+                                    type="file"
+                                    accept="application/toml,.toml"
+                                    className="hidden"
+                                    onChange={importDatasetConfig}
+                                />
+                                <Select
+                                    size="lg"
+                                    label="Stored dataset config *"
+                                    value={effectiveDatasetId}
+                                    onChange={(next) => setSelectedDatasetId(next ?? '')}
+                                    disabled={datasetsQuery.isPending || datasets.length === 0}
+                                >
+                                    {datasets.map((dataset) => (
+                                        <Option key={dataset.id} value={dataset.id}>
+                                            {dataset.name}
+                                        </Option>
+                                    ))}
+                                </Select>
+                                <div className="mt-2 flex items-center justify-between gap-3">
+                                    <p className="text-xs leading-5 text-blue-gray-600">
+                                        {datasets.length
+                                            ? `${datasets.length} config${datasets.length === 1 ? '' : 's'} available on the server.`
+                                            : 'Import a TOML dataset config to continue.'}
+                                    </p>
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="text"
+                                        color="blue"
+                                        disabled={importDatasetMutation.isPending}
+                                        className="shrink-0 px-2 py-1"
+                                        onClick={() => datasetImportInputRef.current?.click()}
+                                    >
+                                        {importDatasetMutation.isPending
+                                            ? 'Importing…'
+                                            : 'Import TOML'}
+                                    </Button>
+                                </div>
+                            </div>
                             <TextField
                                 field={{
                                     key: 'outputName',
@@ -1172,9 +1291,33 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
                             ) : (
                                 <div className="mt-4 flex items-center gap-2 rounded-lg bg-green-50 p-3 text-sm font-medium text-green-800">
                                     <CheckCircleIcon className="h-5 w-5" />
-                                    Ready to review and copy
+                                    Ready to add to the training queue
                                 </div>
                             )}
+
+                            <div className="mt-5 rounded-lg border border-blue-gray-100 p-3">
+                                <div className="flex items-center justify-between gap-3 text-sm">
+                                    <span className="font-medium text-blue-gray-800">
+                                        Queue {queueQuery.data?.state ?? 'loading'}
+                                    </span>
+                                    <span className="text-blue-gray-600">
+                                        {queueQuery.data?.queued ?? 0} waiting
+                                    </span>
+                                </div>
+                                <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outlined"
+                                    color="blue-gray"
+                                    disabled={queueMutation.isPending || !queueQuery.data}
+                                    className="mt-3 w-full"
+                                    onClick={() => queueMutation.mutate()}
+                                >
+                                    {queueQuery.data?.state === 'running'
+                                        ? 'Pause queue'
+                                        : 'Start queue'}
+                                </Button>
+                            </div>
 
                             <div className="mt-5 space-y-3 border-t border-blue-gray-100 pt-5 text-sm">
                                 <div className="flex gap-3">
@@ -1208,20 +1351,41 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
                                 </pre>
                             </details>
 
+                            <Checkbox
+                                checked={skipCacheStages}
+                                onChange={(event) => setSkipCacheStages(event.target.checked)}
+                                label="Skip cache stages"
+                                containerProps={{ className: 'mt-3' }}
+                            />
+
                             <Button
                                 type="button"
                                 color="blue"
                                 size="lg"
-                                disabled={missingFields.length > 0}
+                                disabled={missingFields.length > 0 || createJobMutation.isPending}
                                 className="mt-5 flex min-h-12 w-full items-center justify-center gap-2 px-5 py-3"
+                                onClick={() => createJobMutation.mutate()}
+                            >
+                                <RocketLaunchIcon className="h-5 w-5" />
+                                {createJobMutation.isPending
+                                    ? 'Adding job…'
+                                    : 'Add to training queue'}
+                            </Button>
+                            <Button
+                                type="button"
+                                color="blue-gray"
+                                variant="outlined"
+                                size="sm"
+                                disabled={missingFields.length > 0}
+                                className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 px-4 py-2"
                                 onClick={copyCommand}
                             >
                                 <ClipboardDocumentIcon className="h-5 w-5" />
-                                Copy training command
+                                Copy command instead
                             </Button>
                             <p className="mt-3 text-center text-xs leading-5 text-blue-gray-600">
-                                Run the copied commands from the directory containing your dataset
-                                and models.
+                                Jobs use the selected server-side dataset snapshot and the shared
+                                acceleration settings.
                             </p>
                             <p
                                 className="mt-2 min-h-5 text-center text-xs font-medium text-blue-700"
