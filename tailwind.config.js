@@ -6,7 +6,8 @@ export default withMT({
     theme: {
         extend: {
             fontFamily: {
-                mono: ['JetBrains Mono']
+                sans: ['Roboto', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+                mono: ['JetBrains Mono', 'ui-monospace', 'monospace']
             }
         }
     },
