@@ -24,6 +24,25 @@ export type DatasetConfig = DatasetSummary & {
     general: Record<string, unknown>
     datasets: Array<Record<string, unknown>>
     warnings?: string[]
+    managed?: boolean
+}
+
+export type ManagedDatasetFile = {
+    path: string
+    name: string
+    size_bytes: number
+    caption: string
+}
+
+export type ManagedControlFile = Omit<ManagedDatasetFile, 'caption'>
+
+export type ManagedDatasetManifest = {
+    datasets: Array<{
+        index: number
+        media_type: 'image' | 'video'
+        files: ManagedDatasetFile[]
+        control_files: ManagedControlFile[]
+    }>
 }
 
 export type ManagedDatasetInput = {
@@ -35,12 +54,18 @@ export type ManagedDatasetInput = {
     captions: string[]
     captionFiles?: File[]
     controlFiles?: File[]
+    existingFiles?: Array<{ path: string; caption: string }>
+    existingControlFiles?: string[]
 }
 
 export type CreateManagedDatasetInput = {
     name: string
     description?: string
     datasets: ManagedDatasetInput[]
+}
+
+export type UpdateManagedDatasetInput = CreateManagedDatasetInput & {
+    configId: string
 }
 
 export type TrainingJobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
@@ -61,6 +86,7 @@ export type TrainingJob = {
     stages: TrainingStage[]
     progress: {
         epoch?: number | null
+        total_epochs?: number | null
         step?: number | null
         total_steps?: number | null
         percent?: number | null
@@ -94,6 +120,33 @@ export type TrainingArtifacts = {
     total_size_bytes: number
 }
 
+export type GpuResourceUsage = {
+    index: number
+    name: string
+    utilization_percent: number | null
+    memory_used_bytes: number | null
+    memory_total_bytes: number | null
+    memory_percent: number | null
+    temperature_c: number | null
+}
+
+export type SystemResourceSnapshot = {
+    timestamp: string
+    cpu: {
+        percent: number
+        logical_cores: number | null
+        physical_cores: number | null
+    }
+    ram: {
+        percent: number
+        used_bytes: number
+        available_bytes: number
+        total_bytes: number
+    }
+    gpus: GpuResourceUsage[]
+    gpu_error: string | null
+}
+
 export const queryKeys = {
     datasets: ['datasets'] as const,
     downloads: ['downloads'] as const,
@@ -102,7 +155,8 @@ export const queryKeys = {
     jobs: ['training', 'jobs'] as const,
     job: (jobId: string) => ['training', 'jobs', jobId] as const,
     artifacts: (jobId: string) => ['training', 'artifacts', jobId] as const,
-    logs: (jobId: string, offset: number) => ['training', 'logs', jobId, offset] as const
+    logs: (jobId: string) => ['training', 'logs', jobId] as const,
+    systemResources: ['system', 'resources'] as const
 }
 
 export const downloadsApi = {
@@ -123,6 +177,9 @@ export const datasetsApi = {
     list: async () => (await apiClient.get<DatasetSummary[]>('/api/datasets')).data,
     get: async (configId: string) =>
         (await apiClient.get<DatasetConfig>(`/api/datasets/${configId}`)).data,
+    getManagedFiles: async (configId: string) =>
+        (await apiClient.get<ManagedDatasetManifest>(`/api/datasets/${configId}/managed-files`))
+            .data,
     import: async (file: File, name?: string) => {
         const form = new FormData()
         form.append('file', file)
@@ -157,6 +214,39 @@ export const datasetsApi = {
         return (
             await apiClient.post<DatasetConfig>('/api/datasets/managed/batch', form, {
                 // Large video datasets can legitimately take much longer than the shared API timeout.
+                timeout: 0
+            })
+        ).data
+    },
+    updateManaged: async (input: UpdateManagedDatasetInput) => {
+        const form = new FormData()
+        form.append('name', input.name)
+        form.append('description', input.description ?? '')
+        form.append(
+            'dataset_specs',
+            JSON.stringify(
+                input.datasets.map((dataset) => ({
+                    media_type: dataset.mediaType,
+                    resolution: dataset.resolution,
+                    num_repeats: dataset.numRepeats,
+                    ...(dataset.targetFrames ? { target_frames: dataset.targetFrames } : {}),
+                    captions: dataset.captions,
+                    existing_files: dataset.existingFiles ?? [],
+                    existing_control_files: dataset.existingControlFiles ?? [],
+                    file_count: dataset.files.length,
+                    caption_file_count: dataset.captionFiles?.length ?? 0,
+                    control_file_count: dataset.controlFiles?.length ?? 0
+                }))
+            )
+        )
+        input.datasets.forEach((dataset) => {
+            dataset.files.forEach((file) => form.append('files', file))
+            dataset.captionFiles?.forEach((file) => form.append('caption_files', file))
+            dataset.controlFiles?.forEach((file) => form.append('control_files', file))
+        })
+
+        return (
+            await apiClient.put<DatasetConfig>(`/api/datasets/${input.configId}/managed`, form, {
                 timeout: 0
             })
         ).data
@@ -207,4 +297,9 @@ export const trainingApi = {
     remove: async (jobId: string) => {
         await apiClient.delete(`/api/training/jobs/${jobId}`)
     }
+}
+
+export const systemApi = {
+    getResources: async () =>
+        (await apiClient.get<SystemResourceSnapshot>('/api/system/resources')).data
 }

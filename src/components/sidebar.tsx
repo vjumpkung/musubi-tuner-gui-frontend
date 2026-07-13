@@ -129,7 +129,7 @@ const SideBar = ({ collapsed, onToggleCollapsed }: SideBarProps) => {
             ) : null}
             <Card
                 className={cn(
-                    'fixed left-0 top-0 z-50 h-screen w-full max-w-[20rem] overflow-x-hidden overflow-y-auto rounded-none p-4 shadow-xl shadow-foreground/5',
+                    'fixed left-0 top-0 z-50 h-screen w-full max-w-[20rem] overflow-x-hidden overflow-y-auto rounded-none p-4 [scrollbar-width:none] shadow-xl shadow-foreground/5 [&::-webkit-scrollbar]:hidden',
                     mobileOpen ? 'flex' : 'hidden',
                     collapsed ? 'lg:hidden' : 'lg:flex'
                 )}
@@ -218,7 +218,7 @@ const SideBar = ({ collapsed, onToggleCollapsed }: SideBarProps) => {
                         <ListItemPrefix>
                             <CommandLineIcon className="h-5 w-5" />
                         </ListItemPrefix>
-                        Logs
+                        Jobs
                     </ListItem>
                     <ListItem {...menuItemProps(Menu.SETTINGS)}>
                         <ListItemPrefix>

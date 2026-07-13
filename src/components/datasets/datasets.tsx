@@ -2,11 +2,14 @@ import {
     type CreateManagedDatasetInput,
     type DatasetConfig,
     type DatasetSummary,
+    type ManagedDatasetManifest,
     type ManagedDatasetInput,
+    type UpdateManagedDatasetInput,
     datasetsApi,
     queryKeys
 } from '../../api/api'
 import { getApiErrorMessage } from '../../api/client'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import {
     AlertDialog,
     AlertDialogAction,
@@ -18,6 +21,15 @@ import {
     AlertDialogTitle,
     AlertDialogTrigger
 } from '@/components/ui/alert-dialog'
+import { Button as ShadcnButton } from '@/components/ui/button'
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle
+} from '@/components/ui/dialog'
 import { Button, Card, CardBody, Input, Textarea, Typography } from '@/components/ui/legacy'
 import { cn } from '@/lib/utils'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -29,19 +41,31 @@ import {
     CircleAlertIcon as ExclamationCircleIcon,
     FilmIcon,
     ImageIcon as PhotoIcon,
+    PencilIcon,
     PlusIcon,
     TrashIcon,
     XIcon as XMarkIcon
 } from 'lucide-react'
-import { type ChangeEvent, type FormEvent, useState } from 'react'
+import { type ChangeEvent, type FormEvent, useEffect, useMemo, useState } from 'react'
 
 type MediaType = ManagedDatasetInput['mediaType']
 
 type SelectedMedia = {
     id: string
-    file: File
+    name: string
+    size: number
     caption: string
+    file?: File
+    existingPath?: string
     captionSource?: string
+}
+
+type SelectedControl = {
+    id: string
+    name: string
+    size: number
+    file?: File
+    existingPath?: string
 }
 
 type DatasetSource = {
@@ -60,7 +84,7 @@ type DatasetDraft = {
     targetFrames: string
     numRepeats: string
     selectedMedia: SelectedMedia[]
-    selectedControls: File[]
+    selectedControls: SelectedControl[]
     selectionError?: string
 }
 
@@ -77,6 +101,68 @@ const createDatasetDraft = (): DatasetDraft => ({
     selectedControls: []
 })
 
+const datasetSettingsStorageKey = 'musubi-tuner-dataset-settings'
+const datasetSettingsVersion = 1
+
+type StoredDatasetDraft = Pick<
+    DatasetDraft,
+    'mediaType' | 'width' | 'height' | 'targetFrames' | 'numRepeats'
+>
+
+type StoredDatasetSettings = {
+    version: typeof datasetSettingsVersion
+    name: string
+    description: string
+    drafts: StoredDatasetDraft[]
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null && !Array.isArray(value)
+
+const isStoredDatasetDraft = (value: unknown): value is StoredDatasetDraft =>
+    isRecord(value) &&
+    (value.mediaType === 'image' || value.mediaType === 'video') &&
+    typeof value.width === 'string' &&
+    typeof value.height === 'string' &&
+    typeof value.targetFrames === 'string' &&
+    typeof value.numRepeats === 'string'
+
+const readDatasetSettings = (): {
+    name: string
+    description: string
+    drafts: DatasetDraft[]
+} => {
+    const fallback = { name: '', description: '', drafts: [createDatasetDraft()] }
+    try {
+        const serialized = window.sessionStorage.getItem(datasetSettingsStorageKey)
+        if (!serialized) return fallback
+        const parsed: unknown = JSON.parse(serialized)
+        if (
+            !isRecord(parsed) ||
+            parsed.version !== datasetSettingsVersion ||
+            typeof parsed.name !== 'string' ||
+            typeof parsed.description !== 'string' ||
+            !Array.isArray(parsed.drafts) ||
+            !parsed.drafts.length ||
+            !parsed.drafts.every(isStoredDatasetDraft)
+        ) {
+            return fallback
+        }
+        return {
+            name: parsed.name,
+            description: parsed.description,
+            drafts: parsed.drafts.slice(0, 50).map((draft) => ({
+                id: `dataset-draft-${++nextDraftId}`,
+                ...draft,
+                selectedMedia: [],
+                selectedControls: []
+            }))
+        }
+    } catch {
+        return fallback
+    }
+}
+
 const mediaExtensions: Record<MediaType, string[]> = {
     image: ['.png', '.jpg', '.jpeg', '.webp', '.bmp'],
     video: ['.mp4', '.webm', '.avi', '.mov', '.mkv']
@@ -86,7 +172,10 @@ const inputContainerProps = { className: '!min-w-0 w-full' }
 
 const fileSignature = (file: File) => `${file.name}:${file.size}:${file.lastModified}`
 
-const fileStem = (file: File) => file.name.replace(/\.[^.]+$/, '').toLowerCase()
+const fileStem = (file: { name: string }) => file.name.replace(/\.[^.]+$/, '').toLowerCase()
+
+const selectedControlSignature = (control: SelectedControl) =>
+    control.existingPath ?? (control.file ? fileSignature(control.file) : control.id)
 
 const isCaptionFile = (file: File) => file.name.toLowerCase().endsWith('.txt')
 
@@ -95,12 +184,12 @@ const isAcceptedFile = (file: File, mediaType: MediaType) => {
     return mediaExtensions[mediaType].some((extension) => name.endsWith(extension))
 }
 
-const getControlPairingError = (media: SelectedMedia[], controls: File[]) => {
+const getControlPairingError = (media: SelectedMedia[], controls: SelectedControl[]) => {
     if (!controls.length) return undefined
 
     const mediaByStem = new Map<string, SelectedMedia[]>()
     media.forEach((item) => {
-        const stem = fileStem(item.file)
+        const stem = fileStem(item)
         mediaByStem.set(stem, [...(mediaByStem.get(stem) ?? []), item])
     })
     const matchedMedia = new Map<string, string[]>()
@@ -134,12 +223,19 @@ const getControlPairingError = (media: SelectedMedia[], controls: File[]) => {
             return `Control images are ambiguous because multiple targets use the stem ${stem}.`
         }
         const suffixes = matchedMedia.get(stem)
-        if (!suffixes) return `Target image ${matches[0].file.name} needs a control image.`
+        if (!suffixes) return `Target image ${matches[0].name} needs a control image.`
         if (suffixes.includes('') && suffixes.length > 1) {
-            return `Controls for ${matches[0].file.name} must use either the exact stem or numbered stems.`
+            return `Controls for ${matches[0].name} must use either the exact stem or numbered stems.`
         }
     }
     return undefined
+}
+
+const controlMatchesMedia = (control: SelectedControl, media: SelectedMedia) => {
+    const controlStem = fileStem(control)
+    const mediaStem = fileStem(media)
+    const numbered = controlStem.match(/^(.+)_\d+$/)
+    return controlStem === mediaStem || numbered?.[1] === mediaStem
 }
 
 const formatFileSize = (bytes: number) => {
@@ -158,6 +254,47 @@ const parseTargetFrames = (value: string) => {
     const frames = parts.map(Number)
     return frames.every((frame) => Number.isSafeInteger(frame) && frame > 0) ? frames : null
 }
+
+const numberPair = (value: unknown): [number, number] | undefined =>
+    Array.isArray(value) &&
+    value.length === 2 &&
+    value.every((item) => typeof item === 'number' && Number.isFinite(item))
+        ? [value[0], value[1]]
+        : undefined
+
+const draftsFromManagedDataset = (
+    config: DatasetConfig,
+    manifest: ManagedDatasetManifest
+): DatasetDraft[] =>
+    manifest.datasets.map((managedDataset) => {
+        const dataset = config.datasets[managedDataset.index] ?? {}
+        const resolution = numberPair(dataset.resolution) ??
+            numberPair(config.general.resolution) ?? [1024, 1024]
+        const targetFrames = Array.isArray(dataset.target_frames)
+            ? dataset.target_frames.filter((value): value is number => typeof value === 'number')
+            : [1, 25, 49]
+        return {
+            id: `dataset-draft-${++nextDraftId}`,
+            mediaType: managedDataset.media_type,
+            width: String(resolution[0]),
+            height: String(resolution[1]),
+            targetFrames: targetFrames.join(', '),
+            numRepeats: typeof dataset.num_repeats === 'number' ? String(dataset.num_repeats) : '1',
+            selectedMedia: managedDataset.files.map((media) => ({
+                id: `existing-media:${media.path}`,
+                name: media.name,
+                size: media.size_bytes,
+                caption: media.caption,
+                existingPath: media.path
+            })),
+            selectedControls: managedDataset.control_files.map((control) => ({
+                id: `existing-control:${control.path}`,
+                name: control.name,
+                size: control.size_bytes,
+                existingPath: control.path
+            }))
+        }
+    })
 
 const getDatasetSources = (config?: DatasetConfig): DatasetSource[] => {
     if (!config) return []
@@ -203,7 +340,9 @@ type StoredDatasetProps = {
     detail?: DatasetConfig
     loadingDetail: boolean
     deleting: boolean
+    loadingEditor: boolean
     onDelete: (dataset: DatasetSummary) => void
+    onEdit: (dataset: DatasetConfig) => void
 }
 
 const StoredDataset = ({
@@ -211,7 +350,9 @@ const StoredDataset = ({
     detail,
     loadingDetail,
     deleting,
-    onDelete
+    loadingEditor,
+    onDelete,
+    onEdit
 }: StoredDatasetProps) => {
     const sources = getDatasetSources(detail)
 
@@ -275,6 +416,22 @@ const StoredDataset = ({
                     <ArrowDownTrayIcon className="h-4 w-4" />
                     Export TOML
                 </a>
+                {detail?.managed ? (
+                    <ShadcnButton
+                        type="button"
+                        variant="outline"
+                        size="icon-sm"
+                        disabled={loadingEditor}
+                        aria-label={`Edit ${summary.name}`}
+                        onClick={() => onEdit(detail)}
+                    >
+                        {loadingEditor ? (
+                            <ArrowPathIcon className="animate-spin" />
+                        ) : (
+                            <PencilIcon />
+                        )}
+                    </ShadcnButton>
+                ) : null}
                 <AlertDialog>
                     <AlertDialogTrigger asChild>
                         <button
@@ -347,6 +504,32 @@ const getDraftValues = (draft: DatasetDraft) => {
     }
 }
 
+const managedInputFromDraft = (draft: DatasetDraft): ManagedDatasetInput => {
+    const values = getDraftValues(draft)
+    const newMedia = draft.selectedMedia.filter((media): media is SelectedMedia & { file: File } =>
+        Boolean(media.file)
+    )
+    const newControls = draft.selectedControls.filter(
+        (control): control is SelectedControl & { file: File } => Boolean(control.file)
+    )
+    return {
+        mediaType: draft.mediaType,
+        resolution: [values.numericWidth, values.numericHeight],
+        numRepeats: values.numericRepeats,
+        targetFrames:
+            draft.mediaType === 'video' ? (values.parsedTargetFrames ?? undefined) : undefined,
+        files: newMedia.map((media) => media.file),
+        captions: newMedia.map((media) => media.caption.trim()),
+        controlFiles: newControls.length ? newControls.map((control) => control.file) : undefined,
+        existingFiles: draft.selectedMedia.flatMap((media) =>
+            media.existingPath ? [{ path: media.existingPath, caption: media.caption.trim() }] : []
+        ),
+        existingControlFiles: draft.selectedControls.flatMap((control) =>
+            control.existingPath ? [control.existingPath] : []
+        )
+    }
+}
+
 type DatasetEditorProps = {
     draft: DatasetDraft
     index: number
@@ -367,7 +550,7 @@ const DatasetEditor = ({
     onTouched
 }: DatasetEditorProps) => {
     const values = getDraftValues(draft)
-    const totalSize = draft.selectedMedia.reduce((sum, media) => sum + media.file.size, 0)
+    const totalSize = draft.selectedMedia.reduce((sum, media) => sum + media.size, 0)
     const controlSize = draft.selectedControls.reduce((sum, file) => sum + file.size, 0)
     const mediaInputId = `${draft.id}-media-files`
     const controlInputId = `${draft.id}-control-files`
@@ -397,12 +580,16 @@ const DatasetEditor = ({
             (file) => !isCaptionFile(file) && isAcceptedFile(file, draft.mediaType)
         )
         const rejectedCount = files.length - sidecars.length - accepted.length
-        const existing = new Set(draft.selectedMedia.map((media) => fileSignature(media.file)))
+        const existing = new Set(
+            draft.selectedMedia.flatMap((media) => (media.file ? [fileSignature(media.file)] : []))
+        )
         const additions = accepted
             .filter((file) => !existing.has(fileSignature(file)))
             .map((file, fileIndex) => ({
                 id: `${fileSignature(file)}:${Date.now()}:${fileIndex}`,
                 file,
+                name: file.name,
+                size: file.size,
                 caption: ''
             }))
         let nextMedia: SelectedMedia[] = [...draft.selectedMedia, ...additions]
@@ -416,7 +603,7 @@ const DatasetEditor = ({
                 continue
             }
             seenSidecars.add(stem)
-            const matches = nextMedia.filter((media) => fileStem(media.file) === stem)
+            const matches = nextMedia.filter((media) => fileStem(media) === stem)
             if (!matches.length) {
                 errors.push(`${sidecar.name} has no matching ${draft.mediaType} file.`)
                 continue
@@ -459,12 +646,19 @@ const DatasetEditor = ({
         const accepted = files.filter((file) => isAcceptedFile(file, 'image'))
         const rejectedCount = files.length - accepted.length
         change((current) => {
-            const existing = new Set(current.selectedControls.map(fileSignature))
+            const existing = new Set(current.selectedControls.map(selectedControlSignature))
             return {
                 ...current,
                 selectedControls: [
                     ...current.selectedControls,
-                    ...accepted.filter((file) => !existing.has(fileSignature(file)))
+                    ...accepted
+                        .filter((file) => !existing.has(fileSignature(file)))
+                        .map((file, index) => ({
+                            id: `new-control:${fileSignature(file)}:${Date.now()}:${index}`,
+                            name: file.name,
+                            size: file.size,
+                            file
+                        }))
                 ],
                 selectionError: rejectedCount
                     ? `${rejectedCount} unsupported control file${rejectedCount === 1 ? '' : 's'} were skipped.`
@@ -674,7 +868,7 @@ const DatasetEditor = ({
                             </p>
                             {draft.selectedControls.map((control) => (
                                 <div
-                                    key={fileSignature(control)}
+                                    key={control.id}
                                     className="flex items-center gap-2 rounded-md bg-muted/60 px-3 py-2 text-sm"
                                 >
                                     <PhotoIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -689,9 +883,7 @@ const DatasetEditor = ({
                                             change((current) => ({
                                                 ...current,
                                                 selectedControls: current.selectedControls.filter(
-                                                    (item) =>
-                                                        fileSignature(item) !==
-                                                        fileSignature(control)
+                                                    (item) => item.id !== control.id
                                                 )
                                             }))
                                         }
@@ -745,12 +937,13 @@ const DatasetEditor = ({
                                     <div className="min-w-0 flex-1">
                                         <p
                                             className="truncate text-sm font-medium text-foreground"
-                                            title={media.file.name}
+                                            title={media.name}
                                         >
-                                            {media.file.name}
+                                            {media.name}
                                         </p>
                                         <p className="text-xs text-muted-foreground">
-                                            {formatFileSize(media.file.size)}
+                                            {formatFileSize(media.size)}
+                                            {media.existingPath ? ' · stored on server' : ''}
                                             {media.captionSource
                                                 ? ` · caption from ${media.captionSource}`
                                                 : ''}
@@ -758,13 +951,17 @@ const DatasetEditor = ({
                                     </div>
                                     <button
                                         type="button"
-                                        aria-label={`Remove ${media.file.name}`}
+                                        aria-label={`Remove ${media.name}`}
                                         className="rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-destructive focus:outline-none focus:ring-2 focus:ring-ring"
                                         onClick={() =>
                                             change((current) => ({
                                                 ...current,
                                                 selectedMedia: current.selectedMedia.filter(
                                                     (item) => item.id !== media.id
+                                                ),
+                                                selectedControls: current.selectedControls.filter(
+                                                    (control) =>
+                                                        !controlMatchesMedia(control, media)
                                                 )
                                             }))
                                         }
@@ -801,14 +998,191 @@ const DatasetEditor = ({
     )
 }
 
+type ManagedDatasetEditDialogProps = {
+    config: DatasetConfig
+    manifest: ManagedDatasetManifest
+    onClose: () => void
+    onSaved: (dataset: DatasetConfig) => void
+}
+
+const ManagedDatasetEditDialog = ({
+    config,
+    manifest,
+    onClose,
+    onSaved
+}: ManagedDatasetEditDialogProps) => {
+    const [name, setName] = useState(config.name)
+    const [description, setDescription] = useState(config.description ?? '')
+    const [drafts, setDrafts] = useState<DatasetDraft[]>(() =>
+        draftsFromManagedDataset(config, manifest)
+    )
+    const [attemptedSubmit, setAttemptedSubmit] = useState(false)
+    const updateMutation = useMutation({
+        mutationFn: datasetsApi.updateManaged,
+        onSuccess: onSaved
+    })
+    const formIsValid =
+        Boolean(name.trim()) &&
+        drafts.length > 0 &&
+        drafts.every((draft) => getDraftValues(draft).isValid)
+    const uploadFileCount = drafts.reduce(
+        (total, draft) =>
+            total +
+            draft.selectedMedia.filter((media) => media.file).length +
+            draft.selectedControls.filter((control) => control.file).length,
+        0
+    )
+    const updateError = updateMutation.error
+        ? getApiErrorMessage(updateMutation.error, 'The dataset could not be updated.')
+        : undefined
+
+    const submit = (event: FormEvent) => {
+        event.preventDefault()
+        setAttemptedSubmit(true)
+        updateMutation.reset()
+        if (!formIsValid) return
+
+        const input: UpdateManagedDatasetInput = {
+            configId: config.id,
+            name: name.trim(),
+            description: description.trim() || undefined,
+            datasets: drafts.map(managedInputFromDraft)
+        }
+        updateMutation.mutate(input)
+    }
+
+    const resetError = () => updateMutation.reset()
+
+    return (
+        <Dialog
+            open
+            onOpenChange={(open) => {
+                if (!open && !updateMutation.isPending) onClose()
+            }}
+        >
+            <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-5xl">
+                <DialogHeader>
+                    <DialogTitle>Edit managed dataset</DialogTitle>
+                    <DialogDescription>
+                        Add or remove media, update captions and repeats, or change the TOML
+                        sections. Existing files stay on the server unless you remove them here.
+                    </DialogDescription>
+                </DialogHeader>
+
+                <form onSubmit={submit} noValidate>
+                    {updateError ? (
+                        <Alert variant="destructive" className="mb-5">
+                            <ExclamationCircleIcon />
+                            <AlertTitle>Update failed</AlertTitle>
+                            <AlertDescription>{updateError}</AlertDescription>
+                        </Alert>
+                    ) : null}
+
+                    <div className="grid gap-5 sm:grid-cols-2">
+                        <Input
+                            required
+                            size="lg"
+                            label="Dataset name"
+                            value={name}
+                            error={attemptedSubmit && !name.trim()}
+                            containerProps={inputContainerProps}
+                            onChange={(event) => {
+                                resetError()
+                                setName(event.target.value)
+                            }}
+                        />
+                        <div className="sm:col-span-2">
+                            <Textarea
+                                label="Description (optional)"
+                                value={description}
+                                onChange={(event) => {
+                                    resetError()
+                                    setDescription(event.target.value)
+                                }}
+                            />
+                        </div>
+                    </div>
+
+                    <div className="mt-6 flex flex-col gap-5">
+                        {drafts.map((draft, index) => (
+                            <DatasetEditor
+                                key={draft.id}
+                                draft={draft}
+                                index={index}
+                                canRemove={drafts.length > 1}
+                                attemptedSubmit={attemptedSubmit}
+                                onTouched={resetError}
+                                onChange={(update) =>
+                                    setDrafts((current) =>
+                                        current.map((item) =>
+                                            item.id === draft.id ? update(item) : item
+                                        )
+                                    )
+                                }
+                                onRemove={() => {
+                                    resetError()
+                                    setDrafts((current) =>
+                                        current.filter((item) => item.id !== draft.id)
+                                    )
+                                }}
+                            />
+                        ))}
+                    </div>
+
+                    <ShadcnButton
+                        type="button"
+                        variant="outline"
+                        className="mt-5 w-full border-dashed"
+                        onClick={() => {
+                            resetError()
+                            setDrafts((current) => [...current, createDatasetDraft()])
+                        }}
+                    >
+                        <PlusIcon data-icon="inline-start" />
+                        Add another dataset to this TOML
+                    </ShadcnButton>
+
+                    <DialogFooter className="mt-6">
+                        <ShadcnButton
+                            type="button"
+                            variant="outline"
+                            disabled={updateMutation.isPending}
+                            onClick={onClose}
+                        >
+                            Cancel
+                        </ShadcnButton>
+                        <ShadcnButton type="submit" disabled={updateMutation.isPending}>
+                            {updateMutation.isPending ? (
+                                <ArrowPathIcon data-icon="inline-start" className="animate-spin" />
+                            ) : (
+                                <PencilIcon data-icon="inline-start" />
+                            )}
+                            {updateMutation.isPending
+                                ? `Uploading ${uploadFileCount} new file${uploadFileCount === 1 ? '' : 's'}…`
+                                : 'Save dataset changes'}
+                        </ShadcnButton>
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
+    )
+}
+
 const Datasets = () => {
     const queryClient = useQueryClient()
-    const [name, setName] = useState('')
-    const [description, setDescription] = useState('')
-    const [drafts, setDrafts] = useState<DatasetDraft[]>(() => [createDatasetDraft()])
+    const initialSettings = useMemo(readDatasetSettings, [])
+    const [name, setName] = useState(initialSettings.name)
+    const [description, setDescription] = useState(initialSettings.description)
+    const [drafts, setDrafts] = useState<DatasetDraft[]>(initialSettings.drafts)
     const [successMessage, setSuccessMessage] = useState<string>()
     const [successWarnings, setSuccessWarnings] = useState<string[]>([])
     const [attemptedSubmit, setAttemptedSubmit] = useState(false)
+    const [editing, setEditing] = useState<{
+        config: DatasetConfig
+        manifest: ManagedDatasetManifest
+    }>()
+    const [loadingEditorId, setLoadingEditorId] = useState<string>()
+    const [editorLoadError, setEditorLoadError] = useState<string>()
 
     const datasetQuery = useQuery({
         queryKey: queryKeys.datasets,
@@ -821,6 +1195,26 @@ const Datasets = () => {
             queryFn: () => datasetsApi.get(dataset.id)
         }))
     })
+
+    useEffect(() => {
+        const settings: StoredDatasetSettings = {
+            version: datasetSettingsVersion,
+            name,
+            description,
+            drafts: drafts.map(({ mediaType, width, height, targetFrames, numRepeats }) => ({
+                mediaType,
+                width,
+                height,
+                targetFrames,
+                numRepeats
+            }))
+        }
+        try {
+            window.sessionStorage.setItem(datasetSettingsStorageKey, JSON.stringify(settings))
+        } catch {
+            // Keep the live form usable when storage is blocked or full.
+        }
+    }, [description, drafts, name])
 
     const formIsValid =
         Boolean(name.trim()) && drafts.every((draft) => getDraftValues(draft).isValid)
@@ -854,6 +1248,31 @@ const Datasets = () => {
         }
     })
 
+    const editDataset = async (config: DatasetConfig) => {
+        setEditorLoadError(undefined)
+        setLoadingEditorId(config.id)
+        try {
+            const manifest = await queryClient.fetchQuery({
+                queryKey: [...queryKeys.datasets, config.id, 'managed-files'],
+                queryFn: () => datasetsApi.getManagedFiles(config.id)
+            })
+            setEditing({ config, manifest })
+        } catch (error) {
+            setEditorLoadError(
+                getApiErrorMessage(error, 'The managed dataset files could not be loaded.')
+            )
+        } finally {
+            setLoadingEditorId(undefined)
+        }
+    }
+
+    const datasetUpdated = async (dataset: DatasetConfig) => {
+        setEditing(undefined)
+        setSuccessMessage(`Dataset “${dataset.name}” was updated successfully.`)
+        setSuccessWarnings(dataset.warnings ?? [])
+        await queryClient.invalidateQueries({ queryKey: queryKeys.datasets })
+    }
+
     const submit = (event: FormEvent) => {
         event.preventDefault()
         setAttemptedSubmit(true)
@@ -864,21 +1283,7 @@ const Datasets = () => {
         const input: CreateManagedDatasetInput = {
             name: name.trim(),
             description: description.trim() || undefined,
-            datasets: drafts.map((draft) => {
-                const values = getDraftValues(draft)
-                return {
-                    mediaType: draft.mediaType,
-                    resolution: [values.numericWidth, values.numericHeight],
-                    numRepeats: values.numericRepeats,
-                    targetFrames:
-                        draft.mediaType === 'video'
-                            ? (values.parsedTargetFrames ?? undefined)
-                            : undefined,
-                    files: draft.selectedMedia.map((media) => media.file),
-                    captions: draft.selectedMedia.map((media) => media.caption.trim()),
-                    controlFiles: draft.selectedControls.length ? draft.selectedControls : undefined
-                }
-            })
+            datasets: drafts.map(managedInputFromDraft)
         }
         createMutation.mutate(input)
     }
@@ -895,7 +1300,7 @@ const Datasets = () => {
         ? getApiErrorMessage(datasetQuery.error, 'Stored datasets could not be loaded.')
         : deleteMutation.error
           ? getApiErrorMessage(deleteMutation.error, 'The dataset could not be deleted.')
-          : undefined
+          : editorLoadError
 
     return (
         <main className="mx-auto w-full max-w-7xl p-3 pb-12 sm:p-5 sm:pb-12">
@@ -946,7 +1351,7 @@ const Datasets = () => {
                                 <ExclamationCircleIcon className="h-5 w-5 shrink-0" />
                                 <div>
                                     <p className="font-semibold">
-                                        Created with {successWarnings.length}{' '}
+                                        Completed with {successWarnings.length}{' '}
                                         {successWarnings.length === 1 ? 'warning' : 'warnings'}
                                     </p>
                                     <ul className="mt-1 flex list-disc flex-col gap-1 pl-5">
@@ -1098,7 +1503,9 @@ const Datasets = () => {
                                     deleteMutation.isPending &&
                                     deleteMutation.variables === summary.id
                                 }
+                                loadingEditor={loadingEditorId === summary.id}
                                 onDelete={deleteDataset}
+                                onEdit={editDataset}
                             />
                         ))}
                     </div>
@@ -1121,6 +1528,15 @@ const Datasets = () => {
                     ) : null}
                 </aside>
             </div>
+            {editing ? (
+                <ManagedDatasetEditDialog
+                    key={editing.config.id}
+                    config={editing.config}
+                    manifest={editing.manifest}
+                    onClose={() => setEditing(undefined)}
+                    onSaved={datasetUpdated}
+                />
+            ) : null}
         </main>
     )
 }

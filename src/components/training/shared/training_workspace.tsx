@@ -41,7 +41,7 @@ import {
     InfoIcon as InformationCircleIcon,
     RocketIcon as RocketLaunchIcon
 } from 'lucide-react'
-import { type ChangeEvent, type ReactNode, useMemo, useRef, useState } from 'react'
+import { type ChangeEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 
 const schedulerOptions = [
     'constant',
@@ -357,6 +357,7 @@ type TrainingWorkspaceProps = {
 }
 
 const trainingConfigSchema = 'musubi-tuner-gui.training-config'
+const trainingDraftVersion = 1
 
 type TrainingConfigFile = {
     schema: typeof trainingConfigSchema
@@ -379,15 +380,74 @@ const hasValidAccelerationSettings = (value: unknown): value is AccelerationSett
     isRecord(value) &&
     Object.keys(defaultAccelerationSettings).every((key) => typeof value[key] === 'string')
 
+type TrainingDraft = {
+    version: typeof trainingDraftVersion
+    values: TrainingValues
+    selectedDatasetId: string
+    skipCacheStages: boolean
+    openAdvanced: boolean
+    openPublishing: boolean
+}
+
+const trainingDraftStorageKey = (profileId: TrainingProfile['id']) =>
+    `musubi-tuner-training-draft:${profileId}`
+
+const defaultTrainingDraft = (profile: TrainingProfile): TrainingDraft => ({
+    version: trainingDraftVersion,
+    values: { ...profile.defaults },
+    selectedDatasetId: '',
+    skipCacheStages: false,
+    openAdvanced: false,
+    openPublishing: false
+})
+
+const readTrainingDraft = (profile: TrainingProfile): TrainingDraft => {
+    const fallback = defaultTrainingDraft(profile)
+
+    try {
+        const serialized = window.sessionStorage.getItem(trainingDraftStorageKey(profile.id))
+        if (!serialized) return fallback
+
+        const parsed: unknown = JSON.parse(serialized)
+        if (
+            !isRecord(parsed) ||
+            parsed.version !== trainingDraftVersion ||
+            !hasValidTrainingValues(parsed.values)
+        ) {
+            return fallback
+        }
+
+        const allowedKeys = new Set(Object.keys(profile.defaults))
+        const storedValues = Object.fromEntries(
+            Object.entries(parsed.values).filter(([key]) => allowedKeys.has(key))
+        ) as TrainingValues
+
+        return {
+            version: trainingDraftVersion,
+            values: { ...profile.defaults, ...storedValues },
+            selectedDatasetId:
+                typeof parsed.selectedDatasetId === 'string' ? parsed.selectedDatasetId : '',
+            skipCacheStages:
+                typeof parsed.skipCacheStages === 'boolean' ? parsed.skipCacheStages : false,
+            openAdvanced: typeof parsed.openAdvanced === 'boolean' ? parsed.openAdvanced : false,
+            openPublishing:
+                typeof parsed.openPublishing === 'boolean' ? parsed.openPublishing : false
+        }
+    } catch {
+        return fallback
+    }
+}
+
 const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
     const queryClient = useQueryClient()
-    const [values, setValues] = useState<TrainingValues>(() => ({ ...profile.defaults }))
-    const [openAdvanced, setOpenAdvanced] = useState(false)
-    const [openPublishing, setOpenPublishing] = useState(false)
+    const initialDraft = useMemo(() => readTrainingDraft(profile), [profile])
+    const [values, setValues] = useState<TrainingValues>(() => initialDraft.values)
+    const [openAdvanced, setOpenAdvanced] = useState(initialDraft.openAdvanced)
+    const [openPublishing, setOpenPublishing] = useState(initialDraft.openPublishing)
     const [copyStatus, setCopyStatus] = useState('')
     const [configStatus, setConfigStatus] = useState('')
-    const [selectedDatasetId, setSelectedDatasetId] = useState('')
-    const [skipCacheStages, setSkipCacheStages] = useState(false)
+    const [selectedDatasetId, setSelectedDatasetId] = useState(initialDraft.selectedDatasetId)
+    const [skipCacheStages, setSkipCacheStages] = useState(initialDraft.skipCacheStages)
     const importInputRef = useRef<HTMLInputElement>(null)
     const datasetImportInputRef = useRef<HTMLInputElement>(null)
     const accelerationSettings = useAccelerationSettings((state) => state.settings)
@@ -402,7 +462,28 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
         refetchInterval: 1_500
     })
     const datasets = datasetsQuery.data ?? []
-    const effectiveDatasetId = selectedDatasetId || datasets[0]?.id || ''
+    const effectiveDatasetId =
+        datasets.find((dataset) => dataset.id === selectedDatasetId)?.id ?? datasets[0]?.id ?? ''
+
+    useEffect(() => {
+        const draft: TrainingDraft = {
+            version: trainingDraftVersion,
+            values,
+            selectedDatasetId,
+            skipCacheStages,
+            openAdvanced,
+            openPublishing
+        }
+
+        try {
+            window.sessionStorage.setItem(
+                trainingDraftStorageKey(profile.id),
+                JSON.stringify(draft)
+            )
+        } catch {
+            // Storage may be unavailable in hardened browser contexts; the live form still works.
+        }
+    }, [openAdvanced, openPublishing, profile.id, selectedDatasetId, skipCacheStages, values])
 
     const importDatasetMutation = useMutation({
         mutationFn: (file: File) => datasetsApi.import(file),
