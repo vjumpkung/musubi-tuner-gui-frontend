@@ -84,6 +84,16 @@ export type TrainingLogChunk = {
     eof: boolean
 }
 
+export type TrainingArtifact = {
+    name: string
+    size_bytes: number
+}
+
+export type TrainingArtifacts = {
+    files: TrainingArtifact[]
+    total_size_bytes: number
+}
+
 export const queryKeys = {
     datasets: ['datasets'] as const,
     downloads: ['downloads'] as const,
@@ -91,6 +101,7 @@ export const queryKeys = {
     queue: ['training', 'queue'] as const,
     jobs: ['training', 'jobs'] as const,
     job: (jobId: string) => ['training', 'jobs', jobId] as const,
+    artifacts: (jobId: string) => ['training', 'artifacts', jobId] as const,
     logs: (jobId: string, offset: number) => ['training', 'logs', jobId, offset] as const
 }
 
@@ -179,6 +190,10 @@ export const trainingApi = {
                 params: { offset }
             })
         ).data,
+    getArtifacts: async (jobId: string) =>
+        (await apiClient.get<TrainingArtifacts>(`/api/training/jobs/${jobId}/artifacts`)).data,
+    artifactsDownloadUrl: (jobId: string) =>
+        `${String(import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')}/api/training/jobs/${encodeURIComponent(jobId)}/artifacts/download`,
     cancel: async (jobId: string) =>
         (await apiClient.post<TrainingJob>(`/api/training/jobs/${jobId}/cancel`)).data,
     retry: async (jobId: string) =>

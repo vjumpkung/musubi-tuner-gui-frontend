@@ -16,6 +16,7 @@ import { Button, Card, CardBody, Progress, Typography } from '@/components/ui/le
 import { cn } from '@/lib/utils'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+    DownloadIcon,
     RefreshCwIcon as ArrowPathIcon,
     SquareTerminalIcon as CommandLineIcon,
     PauseIcon,
@@ -77,6 +78,19 @@ const formatDate = (value?: string | null) => {
     return Number.isNaN(date.getTime()) ? value : date.toLocaleString()
 }
 
+const formatBytes = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`
+    const units = ['KB', 'MB', 'GB', 'TB']
+    let value = bytes / 1024
+    let unit = units[0]
+    for (const nextUnit of units.slice(1)) {
+        if (value < 1024) break
+        value /= 1024
+        unit = nextUnit
+    }
+    return `${value.toFixed(value >= 10 ? 1 : 2)} ${unit}`
+}
+
 const LogViewer = () => {
     const queryClient = useQueryClient()
     const [selectedJobId, setSelectedJobId] = useState('')
@@ -96,6 +110,11 @@ const LogViewer = () => {
         jobs.find((job) => job.status === 'running') ??
         jobs[0]
     const jobLog = useJobLog(selectedJob?.id ?? '')
+    const artifactsQuery = useQuery({
+        queryKey: queryKeys.artifacts(selectedJob?.id ?? ''),
+        queryFn: () => trainingApi.getArtifacts(selectedJob?.id ?? ''),
+        enabled: selectedJob?.status === 'completed'
+    })
 
     const refresh = async () => {
         await Promise.all([
@@ -134,6 +153,7 @@ const LogViewer = () => {
         jobsQuery.error ??
         queueQuery.error ??
         jobLog.error ??
+        artifactsQuery.error ??
         queueMutation.error ??
         cancelMutation.error ??
         retryMutation.error ??
@@ -353,6 +373,51 @@ const LogViewer = () => {
                                         </div>
                                     ))}
                                 </div>
+                                {selectedJob.status === 'completed' ? (
+                                    <div className="mt-4 flex flex-col gap-3 rounded-lg border border-border bg-muted/40 p-3 sm:flex-row sm:items-center sm:justify-between">
+                                        <div>
+                                            <p className="text-sm font-medium text-foreground">
+                                                LoRA checkpoints
+                                            </p>
+                                            <p className="mt-0.5 text-xs text-muted-foreground">
+                                                {artifactsQuery.isPending
+                                                    ? 'Checking the job output…'
+                                                    : artifactsQuery.data?.files.length
+                                                      ? `${artifactsQuery.data.files.length} files · ${formatBytes(artifactsQuery.data.total_size_bytes)}`
+                                                      : 'No saved LoRA checkpoints were found.'}
+                                            </p>
+                                        </div>
+                                        {artifactsQuery.data?.files.length ? (
+                                            <Button
+                                                asChild
+                                                type="button"
+                                                size="sm"
+                                                color="blue"
+                                                className="flex shrink-0 items-center gap-2"
+                                            >
+                                                <a
+                                                    href={trainingApi.artifactsDownloadUrl(
+                                                        selectedJob.id
+                                                    )}
+                                                >
+                                                    <DownloadIcon className="h-4 w-4" /> Download
+                                                    all LoRAs
+                                                </a>
+                                            </Button>
+                                        ) : (
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                color="blue"
+                                                className="flex shrink-0 items-center gap-2"
+                                                disabled
+                                            >
+                                                <DownloadIcon className="h-4 w-4" /> Download all
+                                                LoRAs
+                                            </Button>
+                                        )}
+                                    </div>
+                                ) : null}
                                 {selectedJob.error ? (
                                     <p className="mt-4 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
                                         {selectedJob.error}

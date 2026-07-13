@@ -398,6 +398,8 @@ parsed from trainer output (tqdm step lines); all of its fields may stay `null`.
 | `GET`    | `/api/training/jobs`             | List jobs, `?status=` filter, newest first |
 | `GET`    | `/api/training/jobs/{id}`        | Read one job                               |
 | `GET`    | `/api/training/jobs/{id}/logs`   | Incremental log read                       |
+| `GET`    | `/api/training/jobs/{id}/artifacts` | List completed-job LoRA checkpoints     |
+| `GET`    | `/api/training/jobs/{id}/artifacts/download` | Download all checkpoints as a ZIP |
 | `POST`   | `/api/training/jobs/{id}/cancel` | Cancel a queued or running job             |
 | `POST`   | `/api/training/jobs/{id}/retry`  | Clone a terminal job as a new queued job   |
 | `PATCH`  | `/api/training/jobs/{id}`        | Reorder: `{ "queue_position": 0 }`         |
@@ -475,6 +477,28 @@ starting at byte `offset`:
 The frontend keeps `next_offset` and polls for appended output; `eof` is `true` once the job is
 terminal and the full log has been returned. Cap each response (for example 64 KiB) so a long
 training run never produces an unbounded payload.
+
+### Download completed LoRAs
+
+`GET /api/training/jobs/{id}/artifacts` is available once the job is `completed`. It finds the
+final `{outputName}.safetensors` file and every `{outputName}-*.safetensors` checkpoint in the
+job's validated `outputDir`:
+
+```json
+{
+    "files": [
+        { "name": "char_v3-000001.safetensors", "size_bytes": 184549376 },
+        { "name": "char_v3-000002.safetensors", "size_bytes": 184549376 },
+        { "name": "char_v3.safetensors", "size_bytes": 184549376 }
+    ],
+    "total_size_bytes": 553648128
+}
+```
+
+`GET /api/training/jobs/{id}/artifacts/download` streams those files as one uncompressed,
+ZIP64-capable archive so large LoRAs are not duplicated in backend storage. Return `409` until
+the job completes and `404` when a completed job has no matching checkpoints. Symlinks and files
+outside the configured workspace are never included.
 
 ### Cancel, retry, reorder, delete
 
