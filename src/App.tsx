@@ -7,7 +7,7 @@ import SideBar from './components/sidebar'
 import { type TrainingProfile, trainingProfiles } from './components/training/profiles'
 import TrainingWorkspace from './components/training/shared/training_workspace'
 import useMenuBar, { Menu } from './hooks/useMenubar'
-import { cn } from './utils/cn'
+import { cn } from '@/lib/utils'
 import { useState } from 'react'
 
 const trainingProfileByMenu: Partial<Record<Menu, TrainingProfile['id']>> = {

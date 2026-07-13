@@ -1,18 +1,4 @@
 import useMenuBar, { Menu } from '../hooks/useMenubar'
-import { cn } from '../utils/cn'
-import {
-    Bars3Icon,
-    ChevronDoubleLeftIcon,
-    ChevronDownIcon,
-    ChevronRightIcon,
-    Cog6ToothIcon,
-    CommandLineIcon,
-    CircleStackIcon,
-    CloudArrowDownIcon,
-    InformationCircleIcon,
-    SparklesIcon,
-    XMarkIcon
-} from '@heroicons/react/24/solid'
 import {
     Accordion,
     AccordionBody,
@@ -23,7 +9,21 @@ import {
     ListItem,
     ListItemPrefix,
     Typography
-} from '@material-tailwind/react'
+} from '@/components/ui/legacy'
+import { cn } from '@/lib/utils'
+import {
+    MenuIcon as Bars3Icon,
+    PanelLeftCloseIcon as ChevronDoubleLeftIcon,
+    ChevronDownIcon,
+    ChevronRightIcon,
+    SettingsIcon as Cog6ToothIcon,
+    SquareTerminalIcon as CommandLineIcon,
+    DatabaseIcon as CircleStackIcon,
+    CloudDownloadIcon as CloudArrowDownIcon,
+    InfoIcon as InformationCircleIcon,
+    SparklesIcon,
+    XIcon as XMarkIcon
+} from 'lucide-react'
 import { type KeyboardEvent, useEffect, useState } from 'react'
 
 const trainingItems = [
@@ -78,7 +78,7 @@ const SideBar = ({ collapsed, onToggleCollapsed }: SideBarProps) => {
             selected: active,
             'aria-current': active ? ('page' as const) : undefined,
             className: cn(
-                active && 'bg-blue-50 font-medium text-blue-700 hover:bg-blue-50 focus:bg-blue-50'
+                active && 'bg-accent font-medium text-primary hover:bg-accent focus:bg-accent'
             ),
             onClick: () => selectMenu(target),
             onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => {
@@ -92,7 +92,7 @@ const SideBar = ({ collapsed, onToggleCollapsed }: SideBarProps) => {
 
     return (
         <>
-            <div className="sticky top-0 z-30 flex items-center gap-2 border-b border-blue-gray-100 bg-white px-3 py-2 lg:hidden">
+            <div className="sticky top-0 z-30 flex items-center gap-2 border-b border-border bg-card px-3 py-2 lg:hidden">
                 <IconButton
                     variant="text"
                     color="blue-gray"
@@ -108,7 +108,7 @@ const SideBar = ({ collapsed, onToggleCollapsed }: SideBarProps) => {
             </div>
             {mobileOpen ? (
                 <div
-                    className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+                    className="fixed inset-0 z-40 bg-foreground/50 lg:hidden"
                     aria-hidden="true"
                     onClick={() => setMobileOpen(false)}
                 />
@@ -118,7 +118,7 @@ const SideBar = ({ collapsed, onToggleCollapsed }: SideBarProps) => {
                     <IconButton
                         variant="text"
                         color="blue-gray"
-                        className="border border-blue-gray-100 bg-white shadow-md"
+                        className="border border-border bg-card shadow-md"
                         aria-label="Show sidebar"
                         aria-expanded={false}
                         onClick={onToggleCollapsed}
@@ -129,7 +129,7 @@ const SideBar = ({ collapsed, onToggleCollapsed }: SideBarProps) => {
             ) : null}
             <Card
                 className={cn(
-                    'fixed left-0 top-0 z-50 h-screen w-full max-w-[20rem] overflow-x-hidden overflow-y-auto rounded-none p-4 shadow-xl shadow-blue-gray-900/5',
+                    'fixed left-0 top-0 z-50 h-screen w-full max-w-[20rem] overflow-x-hidden overflow-y-auto rounded-none p-4 shadow-xl shadow-foreground/5',
                     mobileOpen ? 'flex' : 'hidden',
                     collapsed ? 'lg:hidden' : 'lg:flex'
                 )}
@@ -139,7 +139,7 @@ const SideBar = ({ collapsed, onToggleCollapsed }: SideBarProps) => {
                         <Typography variant="h5" color="blue-gray">
                             Musubi Tuner GUI
                         </Typography>
-                        <Typography className="text-sm text-blue-gray-600">
+                        <Typography className="text-sm text-muted-foreground">
                             by PixelLatent
                         </Typography>
                     </div>
@@ -181,7 +181,7 @@ const SideBar = ({ collapsed, onToggleCollapsed }: SideBarProps) => {
                         <ListItem className="p-0">
                             <AccordionHeader
                                 onClick={() => setOpenTraining(!openTraining)}
-                                className="border-b-0 p-3"
+                                className="gap-2 border-b-0 p-3"
                             >
                                 <ListItemPrefix>
                                     <SparklesIcon className="h-5 w-5" />

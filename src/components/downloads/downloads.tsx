@@ -1,18 +1,18 @@
 import { type DownloadJob, type DownloadStatus, downloadsApi, queryKeys } from '../../api/api'
 import { getApiErrorMessage } from '../../api/client'
-import { cn } from '../../utils/cn'
 import { downloadFamilies, downloadModels, type DownloadModel } from './catalog'
-import {
-    ArrowDownTrayIcon,
-    ArrowPathIcon,
-    CheckCircleIcon,
-    ExclamationCircleIcon,
-    FolderIcon,
-    MagnifyingGlassIcon,
-    StopIcon
-} from '@heroicons/react/24/outline'
-import { Button, Card, CardBody, Input, Option, Select, Typography } from '@material-tailwind/react'
+import { Button, Card, CardBody, Input, Option, Select, Typography } from '@/components/ui/legacy'
+import { cn } from '@/lib/utils'
 import { useMutation, useQueries, useQueryClient } from '@tanstack/react-query'
+import {
+    DownloadIcon as ArrowDownTrayIcon,
+    RefreshCwIcon as ArrowPathIcon,
+    CircleCheckIcon as CheckCircleIcon,
+    CircleAlertIcon as ExclamationCircleIcon,
+    FolderIcon,
+    SearchIcon as MagnifyingGlassIcon,
+    SquareIcon as StopIcon
+} from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 const activeStatuses: DownloadStatus[] = ['queued', 'running']
@@ -20,10 +20,10 @@ const activeStatuses: DownloadStatus[] = ['queued', 'running']
 const isActive = (job?: DownloadJob) => job && activeStatuses.includes(job.status)
 
 const jobStyles: Record<DownloadStatus, string> = {
-    queued: 'bg-amber-50 text-amber-800 ring-amber-200',
-    running: 'bg-blue-50 text-blue-800 ring-blue-200',
-    completed: 'bg-green-50 text-green-800 ring-green-200',
-    failed: 'bg-red-50 text-red-800 ring-red-200',
+    queued: 'bg-warning-muted text-warning-foreground ring-warning-border',
+    running: 'bg-accent text-primary ring-primary/20',
+    completed: 'bg-success-muted text-success-foreground ring-success-border',
+    failed: 'bg-destructive/10 text-destructive ring-destructive/20',
     cancelled: 'bg-gray-100 text-gray-700 ring-gray-200'
 }
 
@@ -49,17 +49,17 @@ const DownloadRow = ({
 
     return (
         <article className="[content-visibility:auto]">
-            <Card className="border border-blue-gray-100 shadow-sm">
+            <Card className="border border-border shadow-sm">
                 <CardBody className="flex flex-col gap-5 p-5 sm:p-6 xl:flex-row xl:items-start xl:justify-between">
                     <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                             <Typography variant="h5" color="blue-gray">
                                 {model.name}
                             </Typography>
-                            <span className="rounded bg-blue-gray-50 px-2 py-1 text-xs font-semibold text-blue-gray-700">
+                            <span className="rounded bg-muted px-2 py-1 text-xs font-semibold text-muted-foreground">
                                 {model.task}
                             </span>
-                            <span className="rounded bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700">
+                            <span className="rounded bg-accent px-2 py-1 text-xs font-semibold text-primary">
                                 {model.precision}
                             </span>
                             {job ? (
@@ -73,19 +73,19 @@ const DownloadRow = ({
                                 </span>
                             ) : null}
                         </div>
-                        <p className="mt-2 text-sm text-blue-gray-700">{model.description}</p>
-                        <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs text-blue-gray-600">
+                        <p className="mt-2 text-sm text-muted-foreground">{model.description}</p>
+                        <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs text-muted-foreground">
                             <span className="font-mono">{model.script}</span>
                             <span>{model.files.length} output files</span>
                             {model.trainingScripts ? (
                                 <span>Used by {model.trainingScripts.join(', ')}</span>
                             ) : null}
                         </div>
-                        <details className="mt-3 text-sm text-blue-gray-700">
-                            <summary className="cursor-pointer select-none font-medium text-blue-gray-800">
+                        <details className="mt-3 text-sm text-muted-foreground">
+                            <summary className="cursor-pointer select-none font-medium text-foreground">
                                 Files and paths
                             </summary>
-                            <ul className="mt-2 space-y-1 border-l-2 border-blue-gray-100 pl-3 font-mono text-xs">
+                            <ul className="mt-2 flex flex-col gap-1 border-l-2 border-border pl-3 font-mono text-xs">
                                 {model.files.map((file) => (
                                     <li className="break-all" key={file}>
                                         {file}
@@ -94,17 +94,17 @@ const DownloadRow = ({
                             </ul>
                         </details>
                         {model.note ? (
-                            <p className="mt-3 rounded bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                            <p className="mt-3 rounded bg-warning-muted px-3 py-2 text-xs text-warning-foreground">
                                 {model.note}
                             </p>
                         ) : null}
                         {job?.message || job?.current_file ? (
-                            <p className="mt-3 truncate text-xs text-blue-gray-600">
+                            <p className="mt-3 truncate text-xs text-muted-foreground">
                                 {job.message || job.current_file}
                             </p>
                         ) : null}
                         {job?.error ? (
-                            <p className="mt-3 flex items-start gap-2 text-sm text-red-700">
+                            <p className="mt-3 flex items-start gap-2 text-sm text-destructive">
                                 <ExclamationCircleIcon className="mt-0.5 h-4 w-4 shrink-0" />
                                 <span>{job.error}</span>
                             </p>
@@ -116,10 +116,10 @@ const DownloadRow = ({
                                 aria-valuenow={Math.round(progress)}
                                 aria-valuemin={0}
                                 aria-valuemax={100}
-                                className="mt-3 h-2 overflow-hidden rounded bg-blue-gray-100"
+                                className="mt-3 h-2 overflow-hidden rounded bg-muted"
                             >
                                 <div
-                                    className="h-full bg-blue-600 transition-[width]"
+                                    className="h-full bg-primary transition-[width]"
                                     style={{ width: `${progress}%` }}
                                 />
                             </div>
@@ -244,12 +244,12 @@ const Downloads = () => {
                 <Typography variant="h1" color="blue-gray">
                     Model downloads
                 </Typography>
-                <p className="mt-1 text-sm text-blue-gray-600">
+                <p className="mt-1 text-sm text-muted-foreground">
                     Download complete model bundles used by the training scripts.
                 </p>
             </header>
 
-            <Card className="border border-blue-gray-100 shadow-sm">
+            <Card className="border border-border shadow-sm">
                 <CardBody className="p-5 sm:p-6">
                     <div className="grid gap-5 lg:grid-cols-[minmax(18rem,1fr)_minmax(14rem,0.6fr)]">
                         <Input
@@ -286,10 +286,10 @@ const Downloads = () => {
                                 placeholder="Model, task, precision, or script name"
                             />
                         </div>
-                        <div className="flex shrink-0 items-center gap-4 text-sm text-blue-gray-600">
+                        <div className="flex shrink-0 items-center gap-4 text-sm text-muted-foreground">
                             <span>{visibleModels.length} bundles</span>
                             {completedCount ? (
-                                <span className="flex items-center gap-1.5 text-green-700">
+                                <span className="flex items-center gap-1.5 text-success-foreground">
                                     <CheckCircleIcon className="h-5 w-5" />
                                     {completedCount} completed
                                 </span>
@@ -302,7 +302,7 @@ const Downloads = () => {
             {requestError ? (
                 <div
                     role="alert"
-                    className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800"
+                    className="flex items-start gap-3 rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive"
                 >
                     <ExclamationCircleIcon className="h-5 w-5 shrink-0" />
                     <div>
@@ -327,7 +327,7 @@ const Downloads = () => {
             </section>
 
             {visibleModels.length === 0 ? (
-                <div className="rounded-lg border border-dashed border-blue-gray-200 py-16 text-center text-sm text-blue-gray-600">
+                <div className="rounded-lg border border-dashed border-border py-16 text-center text-sm text-muted-foreground">
                     No download bundles match the current filters.
                 </div>
             ) : null}

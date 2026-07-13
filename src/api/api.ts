@@ -26,16 +26,21 @@ export type DatasetConfig = DatasetSummary & {
     warnings?: string[]
 }
 
-export type CreateManagedDatasetInput = {
-    name: string
-    description?: string
+export type ManagedDatasetInput = {
     mediaType: 'image' | 'video'
     resolution: [number, number]
+    numRepeats: number
     targetFrames?: number[]
     files: File[]
     captions: string[]
     captionFiles?: File[]
     controlFiles?: File[]
+}
+
+export type CreateManagedDatasetInput = {
+    name: string
+    description?: string
+    datasets: ManagedDatasetInput[]
 }
 
 export type TrainingJobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
@@ -117,18 +122,29 @@ export const datasetsApi = {
         const form = new FormData()
         form.append('name', input.name)
         if (input.description) form.append('description', input.description)
-        form.append('media_type', input.mediaType)
-        form.append('resolution', JSON.stringify(input.resolution))
-        if (input.mediaType === 'video' && input.targetFrames) {
-            form.append('target_frames', JSON.stringify(input.targetFrames))
-        }
-        form.append('captions', JSON.stringify(input.captions))
-        input.files.forEach((file) => form.append('files', file))
-        input.captionFiles?.forEach((file) => form.append('caption_files', file))
-        input.controlFiles?.forEach((file) => form.append('control_files', file))
+        form.append(
+            'dataset_specs',
+            JSON.stringify(
+                input.datasets.map((dataset) => ({
+                    media_type: dataset.mediaType,
+                    resolution: dataset.resolution,
+                    num_repeats: dataset.numRepeats,
+                    ...(dataset.targetFrames ? { target_frames: dataset.targetFrames } : {}),
+                    captions: dataset.captions,
+                    file_count: dataset.files.length,
+                    caption_file_count: dataset.captionFiles?.length ?? 0,
+                    control_file_count: dataset.controlFiles?.length ?? 0
+                }))
+            )
+        )
+        input.datasets.forEach((dataset) => {
+            dataset.files.forEach((file) => form.append('files', file))
+            dataset.captionFiles?.forEach((file) => form.append('caption_files', file))
+            dataset.controlFiles?.forEach((file) => form.append('control_files', file))
+        })
 
         return (
-            await apiClient.post<DatasetConfig>('/api/datasets/managed', form, {
+            await apiClient.post<DatasetConfig>('/api/datasets/managed/batch', form, {
                 // Large video datasets can legitimately take much longer than the shared API timeout.
                 timeout: 0
             })

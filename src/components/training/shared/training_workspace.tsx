@@ -4,28 +4,12 @@ import useAccelerationSettings, {
     type AccelerationSettings,
     defaultAccelerationSettings
 } from '../../../hooks/useAccelerationSettings'
-import { cn } from '../../../utils/cn'
 import {
     type TrainingField,
     type TrainingProfile,
     type TrainingValue,
     type TrainingValues
 } from '../profiles'
-import {
-    AdjustmentsHorizontalIcon,
-    ArrowDownTrayIcon,
-    ArrowUpTrayIcon,
-    CheckCircleIcon,
-    CircleStackIcon,
-    ClipboardDocumentIcon,
-    CloudArrowUpIcon,
-    CodeBracketIcon,
-    CpuChipIcon,
-    CubeTransparentIcon,
-    FolderOpenIcon,
-    InformationCircleIcon,
-    RocketLaunchIcon
-} from '@heroicons/react/24/outline'
 import {
     Accordion,
     AccordionBody,
@@ -39,8 +23,24 @@ import {
     Progress,
     Select,
     Typography
-} from '@material-tailwind/react'
+} from '@/components/ui/legacy'
+import { cn } from '@/lib/utils'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+    SlidersHorizontalIcon as AdjustmentsHorizontalIcon,
+    DownloadIcon as ArrowDownTrayIcon,
+    UploadIcon as ArrowUpTrayIcon,
+    CircleCheckIcon as CheckCircleIcon,
+    DatabaseIcon as CircleStackIcon,
+    ClipboardIcon as ClipboardDocumentIcon,
+    CloudUploadIcon as CloudArrowUpIcon,
+    Code2Icon as CodeBracketIcon,
+    CpuIcon as CpuChipIcon,
+    BoxIcon as CubeTransparentIcon,
+    FolderOpenIcon,
+    InfoIcon as InformationCircleIcon,
+    RocketIcon as RocketLaunchIcon
+} from 'lucide-react'
 import { type ChangeEvent, type ReactNode, useMemo, useRef, useState } from 'react'
 
 const schedulerOptions = [
@@ -271,20 +271,20 @@ type SectionCardProps = {
 }
 
 const SectionCard = ({ number, title, description, icon, children }: SectionCardProps) => (
-    <Card className="border border-blue-gray-100 shadow-sm">
+    <Card className="border border-border shadow-sm">
         <CardBody className="p-5 sm:p-6">
             <div className="mb-6 flex items-start gap-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-accent text-primary">
                     {icon}
                 </div>
                 <div className="min-w-0">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-primary">
                         Section {number}
                     </p>
                     <Typography variant="h5" color="blue-gray">
                         {title}
                     </Typography>
-                    <p className="mt-1 text-sm leading-6 text-blue-gray-600">{description}</p>
+                    <p className="mt-1 text-sm leading-6 text-muted-foreground">{description}</p>
                 </div>
             </div>
             {children}
@@ -318,7 +318,7 @@ const TextField = ({ field, value, type = 'text', onChange }: TextFieldProps) =>
             <p
                 className={cn(
                     'mt-2 text-xs leading-5',
-                    showError ? 'text-red-700' : 'text-blue-gray-600'
+                    showError ? 'text-destructive' : 'text-muted-foreground'
                 )}
             >
                 {showError ? `${field.label} is required.` : field.helper}
@@ -348,7 +348,7 @@ const NumberField = ({ label, value, helper, min, step, onChange }: NumberFieldP
             step={step}
             onChange={(event) => onChange(event.target.value)}
         />
-        {helper ? <p className="mt-2 text-xs leading-5 text-blue-gray-600">{helper}</p> : null}
+        {helper ? <p className="mt-2 text-xs leading-5 text-muted-foreground">{helper}</p> : null}
     </div>
 )
 
@@ -588,24 +588,24 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
 
     return (
         <main className="mx-auto w-full max-w-7xl p-3 pb-12 sm:p-5 sm:pb-12">
-            <header className="mb-6 rounded-xl border border-blue-gray-100 bg-white p-5 shadow-sm sm:p-7">
+            <header className="mb-6 rounded-xl border border-border bg-card p-5 shadow-sm sm:p-7">
                 <div className="flex flex-col gap-5">
                     <div className="max-w-3xl">
                         <div className="mb-3 flex flex-wrap items-center gap-2 text-xs font-semibold">
-                            <span className="rounded-full bg-blue-50 px-3 py-1.5 text-blue-700">
+                            <span className="rounded-full bg-accent px-3 py-1.5 text-primary">
                                 LoRA training
                             </span>
-                            <span className="rounded-full bg-blue-gray-50 px-3 py-1.5 font-mono text-blue-gray-700">
+                            <span className="rounded-full bg-muted px-3 py-1.5 font-mono text-muted-foreground">
                                 {profile.script}
                             </span>
-                            <span className="rounded-full bg-indigo-50 px-3 py-1.5 uppercase text-indigo-700">
+                            <span className="rounded-full bg-accent px-3 py-1.5 uppercase text-primary">
                                 {value('mixedPrecision')}
                             </span>
                         </div>
                         <Typography variant="h1" color="blue-gray">
                             {profile.name}
                         </Typography>
-                        <p className="mt-2 max-w-2xl text-base leading-7 text-blue-gray-600">
+                        <p className="mt-2 max-w-2xl text-base leading-7 text-muted-foreground">
                             {profile.description}
                         </p>
                     </div>
@@ -652,7 +652,9 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
                 <p
                     className={cn(
                         'mt-4 min-h-5 text-sm font-medium',
-                        configStatus.startsWith('Import failed:') ? 'text-red-700' : 'text-blue-700'
+                        configStatus.startsWith('Import failed:')
+                            ? 'text-destructive'
+                            : 'text-primary'
                     )}
                     aria-live="polite"
                 >
@@ -663,7 +665,7 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
             {integrationError ? (
                 <div
                     role="alert"
-                    className="mb-5 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800"
+                    className="mb-5 rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive"
                 >
                     <p className="font-semibold">Backend integration error</p>
                     <p className="mt-1">{integrationError}</p>
@@ -711,7 +713,7 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
                                     ))}
                                 </Select>
                                 <div className="mt-2 flex items-center justify-between gap-3">
-                                    <p className="text-xs leading-5 text-blue-gray-600">
+                                    <p className="text-xs leading-5 text-muted-foreground">
                                         {datasets.length
                                             ? `${datasets.length} config${datasets.length === 1 ? '' : 's'} available on the server.`
                                             : 'Import a TOML dataset config to continue.'}
@@ -786,7 +788,7 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
                                         </Option>
                                     ))}
                                 </Select>
-                                <p className="mt-2 text-xs leading-5 text-blue-gray-600">
+                                <p className="mt-2 text-xs leading-5 text-muted-foreground">
                                     {profile.task.helper}
                                 </p>
                             </div>
@@ -805,7 +807,7 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
                                         </Option>
                                     ))}
                                 </Select>
-                                <p className="mt-2 text-xs leading-5 text-blue-gray-600">
+                                <p className="mt-2 text-xs leading-5 text-muted-foreground">
                                     {field.helper}
                                 </p>
                             </div>
@@ -870,7 +872,7 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
                                         </Option>
                                     ))}
                                 </Select>
-                                <p className="mt-2 text-xs leading-5 text-blue-gray-600">
+                                <p className="mt-2 text-xs leading-5 text-muted-foreground">
                                     The reference script default is selected.
                                 </p>
                             </div>
@@ -906,7 +908,7 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
                                         </Option>
                                     ))}
                                 </Select>
-                                <p className="mt-2 text-xs leading-5 text-blue-gray-600">
+                                <p className="mt-2 text-xs leading-5 text-muted-foreground">
                                     Controls how the learning rate changes over training.
                                 </p>
                             </div>
@@ -946,7 +948,7 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
                                     readOnly
                                     className="cursor-default"
                                 />
-                                <p className="mt-2 text-xs leading-5 text-blue-gray-600">
+                                <p className="mt-2 text-xs leading-5 text-muted-foreground">
                                     Fixed by the reference script.
                                 </p>
                             </div>
@@ -992,7 +994,7 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
                                         </Option>
                                     ))}
                                 </Select>
-                                <p className="mt-2 text-xs leading-5 text-blue-gray-600">
+                                <p className="mt-2 text-xs leading-5 text-muted-foreground">
                                     Install optional libraries before choosing non-SDPA modes.
                                 </p>
                             </div>
@@ -1030,7 +1032,7 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
                                         }
                                         label={flag.label}
                                     />
-                                    <p className="ml-12 text-xs leading-5 text-blue-gray-600">
+                                    <p className="ml-12 text-xs leading-5 text-muted-foreground">
                                         {flag.helper}
                                     </p>
                                 </div>
@@ -1038,19 +1040,19 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
                         </div>
                     </SectionCard>
 
-                    <Card className="border border-blue-gray-100 shadow-sm">
+                    <Card className="border border-border shadow-sm">
                         <Accordion open={openAdvanced}>
                             <AccordionHeader
                                 onClick={() => setOpenAdvanced((current) => !current)}
                                 className="border-b-0 px-5 py-5 sm:px-6"
                             >
                                 <div className="flex items-center gap-3 text-left">
-                                    <CodeBracketIcon className="h-6 w-6 text-blue-gray-600" />
+                                    <CodeBracketIcon className="h-6 w-6 text-muted-foreground" />
                                     <div>
                                         <Typography variant="h5" color="blue-gray">
                                             Advanced scheduling
                                         </Typography>
-                                        <p className="mt-1 text-sm font-normal text-blue-gray-600">
+                                        <p className="mt-1 text-sm font-normal text-muted-foreground">
                                             Noise schedule, seed, scheduler internals, and raw
                                             arguments.
                                         </p>
@@ -1164,19 +1166,19 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
                         </Accordion>
                     </Card>
 
-                    <Card className="border border-blue-gray-100 shadow-sm">
+                    <Card className="border border-border shadow-sm">
                         <Accordion open={openPublishing}>
                             <AccordionHeader
                                 onClick={() => setOpenPublishing((current) => !current)}
                                 className="border-b-0 px-5 py-5 sm:px-6"
                             >
                                 <div className="flex items-center gap-3 text-left">
-                                    <CloudArrowUpIcon className="h-6 w-6 text-blue-gray-600" />
+                                    <CloudArrowUpIcon className="h-6 w-6 text-muted-foreground" />
                                     <div>
                                         <Typography variant="h5" color="blue-gray">
                                             Optional Hugging Face upload
                                         </Typography>
-                                        <p className="mt-1 text-sm font-normal text-blue-gray-600">
+                                        <p className="mt-1 text-sm font-normal text-muted-foreground">
                                             Keep collapsed when training locally only.
                                         </p>
                                     </div>
@@ -1206,7 +1208,7 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
                                             <Option value="dataset">Dataset</Option>
                                             <Option value="space">Space</Option>
                                         </Select>
-                                        <p className="mt-2 text-xs leading-5 text-blue-gray-600">
+                                        <p className="mt-2 text-xs leading-5 text-muted-foreground">
                                             Model is the normal choice for LoRA checkpoints.
                                         </p>
                                     </div>
@@ -1256,24 +1258,22 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
                 </div>
 
                 <aside className="min-w-0 xl:sticky xl:top-5">
-                    <Card className="border border-blue-gray-100 shadow-sm">
+                    <Card className="border border-border shadow-sm">
                         <CardBody className="p-5">
                             <div className="flex items-center gap-3">
-                                <CircleStackIcon className="h-6 w-6 text-blue-700" />
+                                <CircleStackIcon className="h-6 w-6 text-primary" />
                                 <Typography variant="h5" color="blue-gray">
                                     Training readiness
                                 </Typography>
                             </div>
                             <div className="mt-5 flex items-center justify-between text-sm">
-                                <span className="font-medium text-blue-gray-800">
-                                    Required setup
-                                </span>
-                                <span className="font-semibold text-blue-700">{completion}%</span>
+                                <span className="font-medium text-foreground">Required setup</span>
+                                <span className="font-semibold text-primary">{completion}%</span>
                             </div>
                             <Progress value={completion} color="blue" className="mt-2" />
 
                             {missingFields.length ? (
-                                <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                                <div className="mt-4 rounded-lg border border-warning-border bg-warning-muted p-3 text-sm text-warning-foreground">
                                     <div className="flex items-start gap-2">
                                         <InformationCircleIcon className="mt-0.5 h-5 w-5 shrink-0" />
                                         <div>
@@ -1289,18 +1289,18 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
                                     </div>
                                 </div>
                             ) : (
-                                <div className="mt-4 flex items-center gap-2 rounded-lg bg-green-50 p-3 text-sm font-medium text-green-800">
+                                <div className="mt-4 flex items-center gap-2 rounded-lg bg-success-muted p-3 text-sm font-medium text-success-foreground">
                                     <CheckCircleIcon className="h-5 w-5" />
                                     Ready to add to the training queue
                                 </div>
                             )}
 
-                            <div className="mt-5 rounded-lg border border-blue-gray-100 p-3">
+                            <div className="mt-5 rounded-lg border border-border p-3">
                                 <div className="flex items-center justify-between gap-3 text-sm">
-                                    <span className="font-medium text-blue-gray-800">
+                                    <span className="font-medium text-foreground">
                                         Queue {queueQuery.data?.state ?? 'loading'}
                                     </span>
-                                    <span className="text-blue-gray-600">
+                                    <span className="text-muted-foreground">
                                         {queueQuery.data?.queued ?? 0} waiting
                                     </span>
                                 </div>
@@ -1319,34 +1319,38 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
                                 </Button>
                             </div>
 
-                            <div className="mt-5 space-y-3 border-t border-blue-gray-100 pt-5 text-sm">
+                            <div className="mt-5 flex flex-col gap-3 border-t border-border pt-5 text-sm">
                                 <div className="flex gap-3">
-                                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-gray-50 text-xs font-semibold text-blue-gray-700">
+                                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">
                                         1
                                     </span>
-                                    <span className="text-blue-gray-700">
+                                    <span className="text-muted-foreground">
                                         Cache training latents
                                     </span>
                                 </div>
                                 <div className="flex gap-3">
-                                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-gray-50 text-xs font-semibold text-blue-gray-700">
+                                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">
                                         2
                                     </span>
-                                    <span className="text-blue-gray-700">Cache text encoders</span>
+                                    <span className="text-muted-foreground">
+                                        Cache text encoders
+                                    </span>
                                 </div>
                                 <div className="flex gap-3">
-                                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-gray-50 text-xs font-semibold text-blue-gray-700">
+                                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">
                                         3
                                     </span>
-                                    <span className="text-blue-gray-700">Launch LoRA training</span>
+                                    <span className="text-muted-foreground">
+                                        Launch LoRA training
+                                    </span>
                                 </div>
                             </div>
 
-                            <details className="mt-5 rounded-lg border border-blue-gray-100 bg-blue-gray-50">
-                                <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-blue-gray-800">
+                            <details className="mt-5 rounded-lg border border-border bg-muted">
+                                <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-foreground">
                                     Preview generated command
                                 </summary>
-                                <pre className="max-h-80 overflow-auto border-t border-blue-gray-100 p-4 font-mono text-xs leading-5 text-blue-gray-800">
+                                <pre className="max-h-80 overflow-auto border-t border-border p-4 font-mono text-xs leading-5 text-foreground">
                                     {command}
                                 </pre>
                             </details>
@@ -1383,12 +1387,12 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
                                 <ClipboardDocumentIcon className="h-5 w-5" />
                                 Copy command instead
                             </Button>
-                            <p className="mt-3 text-center text-xs leading-5 text-blue-gray-600">
+                            <p className="mt-3 text-center text-xs leading-5 text-muted-foreground">
                                 Jobs use the selected server-side dataset snapshot and the shared
                                 acceleration settings.
                             </p>
                             <p
-                                className="mt-2 min-h-5 text-center text-xs font-medium text-blue-700"
+                                className="mt-2 min-h-5 text-center text-xs font-medium text-primary"
                                 aria-live="polite"
                             >
                                 {copyStatus}

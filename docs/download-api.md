@@ -245,6 +245,7 @@ a `warnings` array so typos are visible.
 | -------- | ----------------------------- | ----------------------------------------- |
 | `GET`    | `/api/datasets`               | List all configs (id, name, timestamps)   |
 | `POST`   | `/api/datasets`               | Create a config from JSON                 |
+| `POST`   | `/api/datasets/managed/batch` | Upload one or more managed dataset entries |
 | `GET`    | `/api/datasets/{id}`          | Read one config                           |
 | `PUT`    | `/api/datasets/{id}`          | Replace `name`/`description`/config body  |
 | `DELETE` | `/api/datasets/{id}`          | Delete a config                           |
@@ -256,6 +257,13 @@ a `warnings` array so typos are visible.
 resource — `201` on create, `200` on update. Return `409` when `name` is already taken.
 `DELETE` returns `204`; it is always allowed because jobs hold their own TOML snapshot (the
 job's `dataset_config_id` becomes `null` via `ON DELETE SET NULL`).
+
+`POST /api/datasets/managed/batch` accepts multipart data. `dataset_specs` is a JSON array whose
+entries contain `media_type`, `resolution`, `num_repeats`, optional `target_frames`, `captions`, and
+the `file_count`, `caption_file_count`, and `control_file_count` used to partition the repeated
+upload fields. Each entry is stored in its own media/cache/control directories and rendered as one
+`[[datasets]]` table in the resulting TOML. The endpoint also accepts `name`, optional
+`description`, repeated `files`, and optional repeated `caption_files` and `control_files` fields.
 
 ### Import a TOML file
 
@@ -306,6 +314,7 @@ Applied on create, update, and import (`422` on violation unless marked as a war
   `frame_extraction` is `chunk` and `target_frames` contains `1`, and when a `target_frames`
   value is not `N*4+1`.
 - `source_fps`, when present, must be a number (rendered as a float in TOML, e.g. `30.0`).
+- `num_repeats`, when present in `[general]` or a dataset, must be a positive integer.
 - Unknown keys produce warnings and are preserved.
 
 `POST /api/datasets/{id}/validate` additionally checks the filesystem and returns per-dataset
