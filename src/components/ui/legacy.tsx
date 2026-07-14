@@ -15,6 +15,7 @@ import {
 import { Textarea as ShadcnTextarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { LoaderCircleIcon } from 'lucide-react'
+import { Slot } from 'radix-ui'
 import {
     Children,
     createElement,
@@ -111,7 +112,7 @@ function Button({
             {loading ? (
                 <LoaderCircleIcon data-icon="inline-start" className="animate-spin" />
             ) : null}
-            {children}
+            <Slot.Slottable>{children}</Slot.Slottable>
         </ShadcnButton>
     )
 }

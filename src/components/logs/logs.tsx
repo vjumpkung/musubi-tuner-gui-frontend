@@ -28,7 +28,7 @@ import {
 import { useEffect, useState } from 'react'
 
 const activeStatuses: TrainingJob['status'][] = ['queued', 'running']
-const LOG_POLL_INTERVAL_MS = 5_000
+const JOBS_POLL_INTERVAL_MS = 5_000
 
 const statusStyles: Record<TrainingJob['status'], string> = {
     queued: 'bg-warning-muted text-warning-foreground',
@@ -46,7 +46,7 @@ const useJobLog = (jobId: string) => {
         queryFn: () => trainingApi.getLogs(jobId, offset),
         enabled: Boolean(jobId),
         staleTime: 0,
-        refetchInterval: (query) => (query.state.data?.eof ? false : LOG_POLL_INTERVAL_MS),
+        refetchInterval: (query) => (query.state.data?.eof ? false : JOBS_POLL_INTERVAL_MS),
         refetchOnWindowFocus: false
     })
 
@@ -100,12 +100,12 @@ const LogViewer = () => {
     const jobsQuery = useQuery({
         queryKey: queryKeys.jobs,
         queryFn: trainingApi.listJobs,
-        refetchInterval: 1_500
+        refetchInterval: JOBS_POLL_INTERVAL_MS
     })
     const queueQuery = useQuery({
         queryKey: queryKeys.queue,
         queryFn: trainingApi.getQueue,
-        refetchInterval: 1_500
+        refetchInterval: JOBS_POLL_INTERVAL_MS
     })
     const jobs = jobsQuery.data ?? []
     const selectedJob =
@@ -118,7 +118,7 @@ const LogViewer = () => {
         queryKey: queryKeys.artifacts(selectedJob?.id ?? ''),
         queryFn: () => trainingApi.getArtifacts(selectedJob?.id ?? ''),
         enabled: Boolean(selectedJob),
-        refetchInterval: shouldPollArtifacts ? 2_500 : false
+        refetchInterval: shouldPollArtifacts ? JOBS_POLL_INTERVAL_MS : false
     })
     const artifactCount = artifactsQuery.data?.files.length ?? 0
     const epochSummary = selectedJob?.progress.total_epochs
