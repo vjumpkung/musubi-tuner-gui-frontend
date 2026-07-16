@@ -1,4 +1,4 @@
-import { type TrainingJob, queryKeys, trainingApi } from '../../api/api'
+import { type TrainingArtifact, type TrainingJob, queryKeys, trainingApi } from '../../api/api'
 import { getApiErrorMessage } from '../../api/client'
 import SystemMonitor from './system_monitor'
 import TerminalComponent from './terminal'
@@ -14,10 +14,12 @@ import {
     AlertDialogTrigger
 } from '@/components/ui/alert-dialog'
 import { Button, Card, CardBody, Progress, Typography } from '@/components/ui/legacy'
+import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
     DownloadIcon,
+    FileJsonIcon,
     RefreshCwIcon as ArrowPathIcon,
     SquareTerminalIcon as CommandLineIcon,
     PauseIcon,
@@ -94,6 +96,14 @@ const formatBytes = (bytes: number) => {
     return `${value.toFixed(value >= 10 ? 1 : 2)} ${unit}`
 }
 
+const artifactLabel = (artifact: TrainingArtifact) => {
+    if (artifact.kind === 'epoch' && artifact.epoch !== null) {
+        return `Epoch ${artifact.epoch}`
+    }
+    if (artifact.kind === 'final') return 'Final'
+    return artifact.name.replace(/\.safetensors$/i, '')
+}
+
 const LogViewer = () => {
     const queryClient = useQueryClient()
     const [selectedJobId, setSelectedJobId] = useState('')
@@ -120,7 +130,8 @@ const LogViewer = () => {
         enabled: Boolean(selectedJob),
         refetchInterval: shouldPollArtifacts ? JOBS_POLL_INTERVAL_MS : false
     })
-    const artifactCount = artifactsQuery.data?.files.length ?? 0
+    const artifacts = artifactsQuery.data?.files ?? []
+    const artifactCount = artifacts.length
     const epochSummary = selectedJob?.progress.total_epochs
         ? ` · epoch ${selectedJob.progress.epoch ?? 0} of ${selectedJob.progress.total_epochs}`
         : ''
@@ -397,43 +408,93 @@ const LogViewer = () => {
                                         </div>
                                     ))}
                                 </div>
-                                <div className="mt-4 flex flex-col gap-3 rounded-lg border border-border bg-muted/40 p-3 sm:flex-row sm:items-center sm:justify-between">
-                                    <div>
-                                        <p className="text-sm font-medium text-foreground">
-                                            LoRA checkpoints
-                                        </p>
-                                        <p className="mt-0.5 text-xs text-muted-foreground">
-                                            {artifactSummary}
-                                        </p>
+                                <div className="mt-4 flex flex-col gap-3 rounded-lg border border-border bg-muted/40 p-3">
+                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                        <div>
+                                            <p className="text-sm font-medium text-foreground">
+                                                LoRA checkpoints
+                                            </p>
+                                            <p className="mt-0.5 text-xs text-muted-foreground">
+                                                {artifactSummary}
+                                            </p>
+                                        </div>
+                                        <div className="flex flex-wrap gap-2">
+                                            <Button
+                                                asChild
+                                                type="button"
+                                                size="sm"
+                                                color="blue-gray"
+                                                variant="outlined"
+                                            >
+                                                <a
+                                                    href={trainingApi.configDownloadUrl(
+                                                        selectedJob.id
+                                                    )}
+                                                >
+                                                    <FileJsonIcon data-icon="inline-start" />
+                                                    Training config
+                                                </a>
+                                            </Button>
+                                            {artifactCount ? (
+                                                <Button
+                                                    asChild
+                                                    type="button"
+                                                    size="sm"
+                                                    color="blue"
+                                                >
+                                                    <a
+                                                        href={trainingApi.artifactsDownloadUrl(
+                                                            selectedJob.id
+                                                        )}
+                                                    >
+                                                        <DownloadIcon data-icon="inline-start" />
+                                                        Download all LoRAs
+                                                    </a>
+                                                </Button>
+                                            ) : (
+                                                <Button
+                                                    type="button"
+                                                    size="sm"
+                                                    color="blue"
+                                                    disabled
+                                                >
+                                                    <DownloadIcon data-icon="inline-start" />
+                                                    Download all LoRAs
+                                                </Button>
+                                            )}
+                                        </div>
                                     </div>
                                     {artifactCount ? (
-                                        <Button
-                                            asChild
-                                            type="button"
-                                            size="sm"
-                                            color="blue"
-                                            className="flex shrink-0 items-center gap-2"
-                                        >
-                                            <a
-                                                href={trainingApi.artifactsDownloadUrl(
-                                                    selectedJob.id
-                                                )}
-                                            >
-                                                <DownloadIcon className="h-4 w-4" /> Download all
-                                                LoRAs
-                                            </a>
-                                        </Button>
-                                    ) : (
-                                        <Button
-                                            type="button"
-                                            size="sm"
-                                            color="blue"
-                                            className="flex shrink-0 items-center gap-2"
-                                            disabled
-                                        >
-                                            <DownloadIcon className="h-4 w-4" /> Download all LoRAs
-                                        </Button>
-                                    )}
+                                        <>
+                                            <Separator />
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <span className="mr-1 text-xs font-medium text-muted-foreground">
+                                                    Download separately
+                                                </span>
+                                                {artifacts.map((artifact) => (
+                                                    <Button
+                                                        key={artifact.name}
+                                                        asChild
+                                                        type="button"
+                                                        size="sm"
+                                                        color="blue-gray"
+                                                        variant="outlined"
+                                                    >
+                                                        <a
+                                                            href={trainingApi.artifactDownloadUrl(
+                                                                selectedJob.id,
+                                                                artifact.name
+                                                            )}
+                                                            title={`${artifact.name} (${formatBytes(artifact.size_bytes)})`}
+                                                        >
+                                                            <DownloadIcon data-icon="inline-start" />
+                                                            {artifactLabel(artifact)}
+                                                        </a>
+                                                    </Button>
+                                                ))}
+                                            </div>
+                                        </>
+                                    ) : null}
                                 </div>
                                 {selectedJob.error ? (
                                     <p className="mt-4 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">

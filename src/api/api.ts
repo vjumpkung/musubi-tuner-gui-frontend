@@ -113,6 +113,8 @@ export type TrainingLogChunk = {
 export type TrainingArtifact = {
     name: string
     size_bytes: number
+    epoch: number | null
+    kind: 'epoch' | 'checkpoint' | 'final'
 }
 
 export type TrainingArtifacts = {
@@ -282,8 +284,12 @@ export const trainingApi = {
         ).data,
     getArtifacts: async (jobId: string) =>
         (await apiClient.get<TrainingArtifacts>(`/api/training/jobs/${jobId}/artifacts`)).data,
+    artifactDownloadUrl: (jobId: string, artifactName: string) =>
+        `${String(import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')}/api/training/jobs/${encodeURIComponent(jobId)}/artifacts/${encodeURIComponent(artifactName)}/download`,
     artifactsDownloadUrl: (jobId: string) =>
         `${String(import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')}/api/training/jobs/${encodeURIComponent(jobId)}/artifacts/download`,
+    configDownloadUrl: (jobId: string) =>
+        `${String(import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')}/api/training/jobs/${encodeURIComponent(jobId)}/config/download`,
     cancel: async (jobId: string) =>
         (await apiClient.post<TrainingJob>(`/api/training/jobs/${jobId}/cancel`)).data,
     retry: async (jobId: string) =>

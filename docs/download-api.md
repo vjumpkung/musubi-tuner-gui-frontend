@@ -326,9 +326,10 @@ creates or deletes anything.
 
 Creating a training job only **enqueues** it — nothing runs until the user starts the queue.
 The queue itself has two states, `paused` and `running`, controlled by explicit start/pause
-endpoints (a Start button in the UI). While the queue is `running`, jobs execute strictly one at
-a time (the GPU is the shared resource) in FIFO order. A job is a sequence of stages executed in
-order:
+endpoints (a Start button in the UI). One Start action runs the first queued job in FIFO order;
+after that job reaches a terminal state, the queue automatically returns to `paused` before
+another job can start. Enqueueing a new job also persists `paused`, while allowing an already
+running job to finish. A job is a sequence of stages executed in order:
 
 1. `cache_latents` — the profile's latent-cache script
 2. `cache_text_encoder` — the profile's text-encoder-cache script
@@ -389,21 +390,23 @@ parsed from trainer output (tqdm step lines); all of its fields may stay `null`.
 
 ### Endpoints
 
-| Method   | Route                            | Purpose                                    |
-| -------- | -------------------------------- | ------------------------------------------ |
-| `GET`    | `/api/training/queue`            | Read queue state and counts                |
-| `POST`   | `/api/training/queue/start`      | Start draining the queue                   |
-| `POST`   | `/api/training/queue/pause`      | Stop picking up further jobs               |
-| `POST`   | `/api/training/jobs`             | Create and enqueue a job (`202`)           |
-| `GET`    | `/api/training/jobs`             | List jobs, `?status=` filter, newest first |
-| `GET`    | `/api/training/jobs/{id}`        | Read one job                               |
-| `GET`    | `/api/training/jobs/{id}/logs`   | Incremental log read                       |
-| `GET`    | `/api/training/jobs/{id}/artifacts` | List completed-job LoRA checkpoints     |
-| `GET`    | `/api/training/jobs/{id}/artifacts/download` | Download all checkpoints as a ZIP |
-| `POST`   | `/api/training/jobs/{id}/cancel` | Cancel a queued or running job             |
-| `POST`   | `/api/training/jobs/{id}/retry`  | Clone a terminal job as a new queued job   |
-| `PATCH`  | `/api/training/jobs/{id}`        | Reorder: `{ "queue_position": 0 }`         |
-| `DELETE` | `/api/training/jobs/{id}`        | Delete a terminal job and its log file     |
+| Method   | Route                                               | Purpose                                    |
+| -------- | --------------------------------------------------- | ------------------------------------------ |
+| `GET`    | `/api/training/queue`                               | Read queue state and counts                |
+| `POST`   | `/api/training/queue/start`                         | Start the next queued job                  |
+| `POST`   | `/api/training/queue/pause`                         | Stop picking up further jobs               |
+| `POST`   | `/api/training/jobs`                                | Create and enqueue a job (`202`)           |
+| `GET`    | `/api/training/jobs`                                | List jobs, `?status=` filter, newest first |
+| `GET`    | `/api/training/jobs/{id}`                           | Read one job                               |
+| `GET`    | `/api/training/jobs/{id}/logs`                      | Incremental log read                       |
+| `GET`    | `/api/training/jobs/{id}/artifacts`                 | List LoRA checkpoints with epoch metadata  |
+| `GET`    | `/api/training/jobs/{id}/artifacts/{name}/download` | Download one checkpoint                    |
+| `GET`    | `/api/training/jobs/{id}/artifacts/download`        | Download all checkpoints as a ZIP          |
+| `GET`    | `/api/training/jobs/{id}/config/download`           | Download the reusable training config      |
+| `POST`   | `/api/training/jobs/{id}/cancel`                    | Cancel a queued or running job             |
+| `POST`   | `/api/training/jobs/{id}/retry`                     | Clone a terminal job as a new queued job   |
+| `PATCH`  | `/api/training/jobs/{id}`                           | Reorder: `{ "queue_position": 0 }`         |
+| `DELETE` | `/api/training/jobs/{id}`                           | Delete a terminal job and its log file     |
 
 ### Queue control (start / pause)
 
@@ -418,14 +421,17 @@ parsed from trainer output (tqdm step lines); all of its fields may stay `null`.
 ```
 
 `POST /api/training/queue/start` sets the state to `running` and wakes the runner; it starts
-executing the job at the front of the queue. `POST /api/training/queue/pause` sets the state to
-`paused`: the runner stops picking up further jobs, but **the currently running job keeps
-running** — use the job's cancel endpoint to stop it. Both return HTTP `200` with the queue
-object and are idempotent (starting a running queue or pausing a paused one is a no-op).
+executing the job at the front of the queue. After completion, failure, or cancellation, the
+runner persists the state as `paused`, so each following job needs another Start click.
+`POST /api/training/queue/pause` also sets the state to `paused`: the runner stops picking up
+further jobs, but **the currently running job keeps running** — use the job's cancel endpoint to
+stop it. Both return HTTP `200` with the queue object and are idempotent (starting a running queue
+or pausing a paused one is a no-op).
 
 The state is persisted (`app_settings.training_queue_state`) and restored on restart; the
 default on first boot is `paused`. So the user flow is: create jobs → they pile up as `queued` →
-click Start → the queue drains in order and keeps draining as new jobs are added, until paused.
+click Start → the first job runs → its terminal state pauses the queue → click Start for the next
+job.
 
 ### Create a training job
 
@@ -455,7 +461,8 @@ click Start → the queue drains in order and keeps draining as new jobs are add
 Validate the profile id, the referenced dataset config, and the required fields for that profile;
 render and store the dataset TOML snapshot; insert the row with status `queued`; return HTTP
 `202` with the job object. Creation never blocks on the queue — a job can be created while
-another is running.
+another is running. Enqueueing sets the queue state to `paused`, but it does not interrupt that
+running job. After a successful response, the frontend navigates directly to Jobs & logs.
 
 ### Read status and logs
 
@@ -478,34 +485,56 @@ The frontend keeps `next_offset` and polls for appended output; `eof` is `true` 
 terminal and the full log has been returned. Cap each response (for example 64 KiB) so a long
 training run never produces an unbounded payload.
 
-### Download completed LoRAs
+### Download LoRAs and their training config
 
-`GET /api/training/jobs/{id}/artifacts` is available once the job is `completed`. It finds the
-final `{outputName}.safetensors` file and every `{outputName}-*.safetensors` checkpoint in the
-job's validated `outputDir`:
+`GET /api/training/jobs/{id}/artifacts` finds the final `{outputName}.safetensors` file and every
+completed `{outputName}-*.safetensors` checkpoint in the job's validated `outputDir`. A running
+job exposes checkpoints as they are saved; a queued job returns an empty list. Numeric suffixes
+are parsed as epoch numbers so the frontend can present each saved epoch separately:
 
 ```json
 {
     "files": [
-        { "name": "char_v3-000001.safetensors", "size_bytes": 184549376 },
-        { "name": "char_v3-000002.safetensors", "size_bytes": 184549376 },
-        { "name": "char_v3.safetensors", "size_bytes": 184549376 }
+        {
+            "name": "char_v3-000001.safetensors",
+            "size_bytes": 184549376,
+            "epoch": 1,
+            "kind": "epoch"
+        },
+        {
+            "name": "char_v3-000002.safetensors",
+            "size_bytes": 184549376,
+            "epoch": 2,
+            "kind": "epoch"
+        },
+        {
+            "name": "char_v3.safetensors",
+            "size_bytes": 184549376,
+            "epoch": null,
+            "kind": "final"
+        }
     ],
     "total_size_bytes": 553648128
 }
 ```
 
-`GET /api/training/jobs/{id}/artifacts/download` streams those files as one uncompressed,
-ZIP64-capable archive so large LoRAs are not duplicated in backend storage. Return `409` until
-the job completes and `404` when a completed job has no matching checkpoints. Symlinks and files
-outside the configured workspace are never included.
+`GET /api/training/jobs/{id}/artifacts/{name}/download` downloads one allowlisted file from that
+result. `GET /api/training/jobs/{id}/artifacts/download` streams all matching files as one
+uncompressed, ZIP64-capable archive so large LoRAs are not duplicated in backend storage. Both
+return `404` when no matching checkpoint exists. Symlinks and files outside the configured
+workspace are never included.
+
+`GET /api/training/jobs/{id}/config/download` reconstructs the frontend's version 1 portable
+training-config JSON from the job snapshot. It preserves the profile values, acceleration
+settings, selected dataset ID, and cache-stage choice for later import. The Hugging Face access
+token is always omitted.
 
 ### Cancel, retry, reorder, delete
 
 - **Cancel** — a `queued` job is marked `cancelled` immediately and leaves the queue. A `running`
   job gets its process group terminated (SIGTERM, then SIGKILL after a grace period), its current
   stage marked `cancelled`, and the job marked `cancelled`. Idempotent for an already-cancelled
-  job; `409` for `completed`/`failed`.
+  job; `409` for `completed`/`failed`. Cancellation leaves the queue paused.
 - **Retry** — allowed for `failed` and `cancelled` jobs. Creates a **new** job (`202`) from the
   stored `values_json` and the stored TOML snapshot, appended at the back of the queue. The
   original job is untouched.
@@ -527,9 +556,10 @@ A single asyncio worker task owns the queue:
    file.
 3. Parse progress from trainer output where recognizable (`steps: ... current/total`); update
    `progress_json` at most once per second to limit write churn.
-4. On exit code 0 advance to the next stage; otherwise mark the stage and job `failed` with the
-   last log lines as `error`.
-5. After the last stage, mark the job `completed`, set `finished_at`, and loop.
+4. On exit code 0 advance to the next stage; otherwise pause the queue and mark the stage and job
+   `failed` with the last log lines as `error`.
+5. After the last stage, persist the queue as `paused`, mark the job `completed`, and set
+   `finished_at`. The next queued job waits for another Start request.
 
 Concurrency is 1 by default; a `MAX_CONCURRENT_TRAINING_JOBS` setting may raise it for multi-GPU
 hosts, but the default contract is strictly serial.

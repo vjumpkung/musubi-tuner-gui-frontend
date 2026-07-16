@@ -16,8 +16,14 @@ import {
 import { useMemo, useState } from 'react'
 
 const activeStatuses: DownloadStatus[] = ['queued', 'running']
+const MAX_DOWNLOAD_STATUS_LENGTH = 120
 
 const isActive = (job?: DownloadJob) => job && activeStatuses.includes(job.status)
+
+const truncateDownloadStatus = (status: string) =>
+    status.length > MAX_DOWNLOAD_STATUS_LENGTH
+        ? `${status.slice(0, MAX_DOWNLOAD_STATUS_LENGTH - 1).trimEnd()}…`
+        : status
 
 const jobStyles: Record<DownloadStatus, string> = {
     queued: 'bg-warning-muted text-warning-foreground ring-warning-border',
@@ -46,6 +52,7 @@ const DownloadRow = ({
 }: DownloadRowProps) => {
     const active = isActive(job)
     const progress = Math.min(100, Math.max(0, job?.progress ?? 0))
+    const downloadStatus = job?.message || job?.current_file
 
     return (
         <article className="[content-visibility:auto]">
@@ -98,9 +105,13 @@ const DownloadRow = ({
                                 {model.note}
                             </p>
                         ) : null}
-                        {job?.message || job?.current_file ? (
-                            <p className="mt-3 truncate text-xs text-muted-foreground">
-                                {job.message || job.current_file}
+                        {downloadStatus ? (
+                            <p
+                                className="mt-3 w-full min-w-0 max-w-full truncate text-xs text-muted-foreground"
+                                title={downloadStatus}
+                                aria-label={downloadStatus}
+                            >
+                                {truncateDownloadStatus(downloadStatus)}
                             </p>
                         ) : null}
                         {job?.error ? (

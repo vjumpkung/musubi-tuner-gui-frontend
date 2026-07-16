@@ -1,9 +1,10 @@
-import { datasetsApi, queryKeys, trainingApi } from '../../../api/api'
+import { type TrainingJob, datasetsApi, queryKeys, trainingApi } from '../../../api/api'
 import { getApiErrorMessage } from '../../../api/client'
 import useAccelerationSettings, {
     type AccelerationSettings,
     defaultAccelerationSettings
 } from '../../../hooks/useAccelerationSettings'
+import useMenuBar, { Menu } from '../../../hooks/useMenubar'
 import {
     type TrainingField,
     type TrainingProfile,
@@ -365,6 +366,8 @@ type TrainingConfigFile = {
     profileId: TrainingProfile['id']
     profileName: string
     exportedAt: string
+    datasetConfigId?: string | null
+    skipCacheStages?: boolean
     values: TrainingValues
     acceleration: AccelerationSettings
 }
@@ -440,6 +443,7 @@ const readTrainingDraft = (profile: TrainingProfile): TrainingDraft => {
 
 const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
     const queryClient = useQueryClient()
+    const setMenuBar = useMenuBar((state) => state.setMenuBar)
     const initialDraft = useMemo(() => readTrainingDraft(profile), [profile])
     const [values, setValues] = useState<TrainingValues>(() => initialDraft.values)
     const [openAdvanced, setOpenAdvanced] = useState(initialDraft.openAdvanced)
@@ -504,12 +508,18 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
                 skip_cache_stages: skipCacheStages,
                 values: { ...values, ...accelerationSettings }
             }),
-        onSuccess: async (job) => {
-            await Promise.all([
+        onSuccess: (job) => {
+            queryClient.setQueryData<TrainingJob[]>(queryKeys.jobs, (current) => [
+                job,
+                ...(current ?? []).filter((item) => item.id !== job.id)
+            ])
+            queryClient.setQueryData(queryKeys.job(job.id), job)
+            setCopyStatus(`Job “${job.name}” added to the queue.`)
+            setMenuBar(Menu.LOGS)
+            void Promise.all([
                 queryClient.invalidateQueries({ queryKey: queryKeys.jobs }),
                 queryClient.invalidateQueries({ queryKey: queryKeys.queue })
             ])
-            setCopyStatus(`Job “${job.name}” added to the queue.`)
         }
     })
 
@@ -575,6 +585,8 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
             profileId: profile.id,
             profileName: profile.name,
             exportedAt: new Date().toISOString(),
+            datasetConfigId: effectiveDatasetId || null,
+            skipCacheStages,
             values: portableValues,
             acceleration: accelerationSettings
         }
@@ -627,6 +639,15 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
             ) as TrainingValues
 
             setValues({ ...profile.defaults, ...importedValues })
+            if (
+                typeof parsed.datasetConfigId === 'string' &&
+                datasets.some((dataset) => dataset.id === parsed.datasetConfigId)
+            ) {
+                setSelectedDatasetId(parsed.datasetConfigId)
+            }
+            if (typeof parsed.skipCacheStages === 'boolean') {
+                setSkipCacheStages(parsed.skipCacheStages)
+            }
             setAccelerationSettings({
                 dynamoBackend: parsed.acceleration.dynamoBackend,
                 dynamoMode: parsed.acceleration.dynamoMode,
