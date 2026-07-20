@@ -66,6 +66,7 @@ type SelectedMedia = {
     size: number
     caption: string
     file?: File
+    captionFile?: File
     existingPath?: string
     captionSource?: string
 }
@@ -605,7 +606,8 @@ const managedInputFromDraft = (draft: DatasetDraft): ManagedDatasetInput => {
         additionalOptions: draft.additionalOptions.trim(),
         files: newMedia.map((media) => media.file),
         captions: newMedia.map((media) => media.caption.trim()),
-        controlFiles: newControls.length ? newControls.map((control) => control.file) : undefined,
+        captionFiles: newMedia.flatMap((media) => (media.captionFile ? [media.captionFile] : [])),
+        controlFiles: newControls.map((control) => control.file),
         existingFiles: draft.selectedMedia.flatMap((media) =>
             media.existingPath ? [{ path: media.existingPath, caption: media.caption.trim() }] : []
         ),
@@ -709,7 +711,13 @@ const UploadProgressPanel = ({ progress }: { progress: ManagedUploadProgress }) 
                 <span className="min-w-0 truncate" title={progress.currentFile}>
                     {progress.phase === 'finalizing'
                         ? 'Saving TOML and captions'
-                        : progress.currentFile}
+                        : `${
+                              progress.currentFileKind === 'control'
+                                  ? 'Control image'
+                                  : progress.currentFileKind === 'caption'
+                                    ? 'Caption file'
+                                    : 'Target media'
+                          } · ${progress.currentFile}`}
                 </span>
                 <span className="shrink-0">
                     {formatFileSize(progress.uploadedBytes)} / {formatFileSize(progress.totalBytes)}
@@ -810,7 +818,12 @@ const DatasetEditor = ({
                 }
                 nextMedia = nextMedia.map((media) =>
                     media.id === matches[0].id
-                        ? { ...media, caption, captionSource: sidecar.name }
+                        ? {
+                              ...media,
+                              caption,
+                              captionFile: media.file ? sidecar : undefined,
+                              captionSource: sidecar.name
+                          }
                         : media
                 )
             } catch {
@@ -1199,6 +1212,7 @@ const DatasetEditor = ({
                                                     ? {
                                                           ...item,
                                                           caption: event.target.value,
+                                                          captionFile: undefined,
                                                           captionSource: undefined
                                                       }
                                                     : item
@@ -1257,6 +1271,7 @@ const ManagedDatasetEditDialog = ({
         (total, draft) =>
             total +
             draft.selectedMedia.filter((media) => media.file).length +
+            draft.selectedMedia.filter((media) => media.captionFile).length +
             draft.selectedControls.filter((control) => control.file).length,
         0
     )
@@ -1472,7 +1487,11 @@ const Datasets = () => {
         numericBatchSize > 0 &&
         drafts.every((draft) => getDraftValues(draft).isValid)
     const uploadFileCount = drafts.reduce(
-        (total, draft) => total + draft.selectedMedia.length + draft.selectedControls.length,
+        (total, draft) =>
+            total +
+            draft.selectedMedia.filter((media) => media.file).length +
+            draft.selectedMedia.filter((media) => media.captionFile).length +
+            draft.selectedControls.filter((control) => control.file).length,
         0
     )
 

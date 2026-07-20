@@ -53,8 +53,8 @@ export type ManagedDatasetInput = {
     additionalOptions: string
     files: File[]
     captions: string[]
-    captionFiles?: File[]
-    controlFiles?: File[]
+    captionFiles: File[]
+    controlFiles: File[]
     existingFiles?: Array<{ path: string; caption: string }>
     existingControlFiles?: string[]
 }
@@ -64,6 +64,7 @@ export type ManagedUploadProgress = {
     completedFiles: number
     totalFiles: number
     currentFile?: string
+    currentFileKind?: 'target' | 'caption' | 'control'
     uploadedBytes: number
     totalBytes: number
     percent: number
@@ -193,6 +194,21 @@ export const downloadsApi = {
 
 type StagedFileKind = 'file_tokens' | 'caption_file_tokens' | 'control_file_tokens'
 
+type StagedTokenGroups = Record<StagedFileKind, string[]>
+
+type ManagedUpload = {
+    datasetIndex: number
+    file: File
+    kind: StagedFileKind
+    progressKind: NonNullable<ManagedUploadProgress['currentFileKind']>
+}
+
+const createStagedTokenGroups = (): StagedTokenGroups => ({
+    file_tokens: [],
+    caption_file_tokens: [],
+    control_file_tokens: []
+})
+
 const managedDatasetSpecs = (input: CreateManagedDatasetInput) =>
     input.datasets.map((dataset) => ({
         media_type: dataset.mediaType,
@@ -204,22 +220,56 @@ const managedDatasetSpecs = (input: CreateManagedDatasetInput) =>
         existing_files: dataset.existingFiles ?? [],
         existing_control_files: dataset.existingControlFiles ?? [],
         file_count: dataset.files.length,
-        caption_file_count: dataset.captionFiles?.length ?? 0,
-        control_file_count: dataset.controlFiles?.length ?? 0
+        caption_file_count: dataset.captionFiles.length,
+        control_file_count: dataset.controlFiles.length
     }))
 
-const managedFiles = (input: CreateManagedDatasetInput) =>
-    input.datasets.flatMap((dataset) => [
-        ...dataset.files.map((file) => ({ file, kind: 'file_tokens' as const })),
-        ...(dataset.captionFiles ?? []).map((file) => ({
+const managedUploads = (input: CreateManagedDatasetInput): ManagedUpload[] => [
+    ...input.datasets.flatMap((dataset, datasetIndex) =>
+        dataset.files.map((file) => ({
+            datasetIndex,
             file,
-            kind: 'caption_file_tokens' as const
-        })),
-        ...(dataset.controlFiles ?? []).map((file) => ({
-            file,
-            kind: 'control_file_tokens' as const
+            kind: 'file_tokens' as const,
+            progressKind: 'target' as const
         }))
-    ])
+    ),
+    ...input.datasets.flatMap((dataset, datasetIndex) =>
+        dataset.captionFiles.map((file) => ({
+            datasetIndex,
+            file,
+            kind: 'caption_file_tokens' as const,
+            progressKind: 'caption' as const
+        }))
+    ),
+    ...input.datasets.flatMap((dataset, datasetIndex) =>
+        dataset.controlFiles.map((file) => ({
+            datasetIndex,
+            file,
+            kind: 'control_file_tokens' as const,
+            progressKind: 'control' as const
+        }))
+    )
+]
+
+const assertAllUploadsStaged = (
+    input: CreateManagedDatasetInput,
+    tokensByDataset: StagedTokenGroups[]
+) => {
+    input.datasets.forEach((dataset, datasetIndex) => {
+        const expectedCounts: Record<StagedFileKind, number> = {
+            file_tokens: dataset.files.length,
+            caption_file_tokens: dataset.captionFiles.length,
+            control_file_tokens: dataset.controlFiles.length
+        }
+        for (const kind of Object.keys(expectedCounts) as StagedFileKind[]) {
+            if (tokensByDataset[datasetIndex][kind].length !== expectedCounts[kind]) {
+                throw new Error(
+                    `Not every ${kind.replaceAll('_', ' ')} for dataset ${datasetIndex + 1} was uploaded`
+                )
+            }
+        }
+    })
+}
 
 const uploadManagedSequentially = async (
     input: CreateManagedDatasetInput,
@@ -227,25 +277,23 @@ const uploadManagedSequentially = async (
 ) => {
     const session = (await apiClient.post<{ id: string }>('/api/datasets/managed/upload-sessions'))
         .data
-    const uploads = managedFiles(input)
+    const uploads = managedUploads(input)
     const totalBytes = uploads.reduce((total, upload) => total + upload.file.size, 0)
-    const tokens: Record<StagedFileKind, string[]> = {
-        file_tokens: [],
-        caption_file_tokens: [],
-        control_file_tokens: []
-    }
+    const tokensByDataset = input.datasets.map(createStagedTokenGroups)
     let completedBytes = 0
     let finalized = false
 
     try {
         for (const [index, upload] of uploads.entries()) {
             const form = new FormData()
-            form.append('file', upload.file)
+            form.append('file', upload.file, upload.file.name)
+            form.append('kind', upload.progressKind)
             input.onProgress?.({
                 phase: 'uploading',
                 completedFiles: index,
                 totalFiles: uploads.length,
                 currentFile: upload.file.name,
+                currentFileKind: upload.progressKind,
                 uploadedBytes: completedBytes,
                 totalBytes,
                 percent: totalBytes ? (completedBytes / totalBytes) * 100 : 0
@@ -265,6 +313,7 @@ const uploadManagedSequentially = async (
                                 completedFiles: index,
                                 totalFiles: uploads.length,
                                 currentFile: upload.file.name,
+                                currentFileKind: upload.progressKind,
                                 uploadedBytes,
                                 totalBytes,
                                 percent: totalBytes ? (uploadedBytes / totalBytes) * 100 : 0
@@ -273,19 +322,26 @@ const uploadManagedSequentially = async (
                     }
                 )
             ).data
-            tokens[upload.kind].push(staged.token)
+            tokensByDataset[upload.datasetIndex][upload.kind].push(staged.token)
             completedBytes += upload.file.size
             input.onProgress?.({
                 phase: 'uploading',
                 completedFiles: index + 1,
                 totalFiles: uploads.length,
                 currentFile: upload.file.name,
+                currentFileKind: upload.progressKind,
                 uploadedBytes: completedBytes,
                 totalBytes,
                 percent: totalBytes ? (completedBytes / totalBytes) * 100 : 100
             })
         }
 
+        assertAllUploadsStaged(input, tokensByDataset)
+        const tokens: StagedTokenGroups = {
+            file_tokens: tokensByDataset.flatMap((group) => group.file_tokens),
+            caption_file_tokens: tokensByDataset.flatMap((group) => group.caption_file_tokens),
+            control_file_tokens: tokensByDataset.flatMap((group) => group.control_file_tokens)
+        }
         input.onProgress?.({
             phase: 'finalizing',
             completedFiles: uploads.length,
