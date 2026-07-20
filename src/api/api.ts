@@ -50,6 +50,7 @@ export type ManagedDatasetInput = {
     resolution: [number, number]
     numRepeats: number
     targetFrames?: number[]
+    additionalOptions: string
     files: File[]
     captions: string[]
     captionFiles?: File[]
@@ -58,10 +59,24 @@ export type ManagedDatasetInput = {
     existingControlFiles?: string[]
 }
 
+export type ManagedUploadProgress = {
+    phase: 'uploading' | 'finalizing'
+    completedFiles: number
+    totalFiles: number
+    currentFile?: string
+    uploadedBytes: number
+    totalBytes: number
+    percent: number
+}
+
 export type CreateManagedDatasetInput = {
     name: string
     description?: string
+    batchSize: number
+    enableBucket: boolean
+    bucketNoUpscale: boolean
     datasets: ManagedDatasetInput[]
+    onProgress?: (progress: ManagedUploadProgress) => void
 }
 
 export type UpdateManagedDatasetInput = CreateManagedDatasetInput & {
@@ -176,6 +191,129 @@ export const downloadsApi = {
         (await apiClient.post<DownloadJob>(`/api/downloads/${jobId}/cancel`)).data
 }
 
+type StagedFileKind = 'file_tokens' | 'caption_file_tokens' | 'control_file_tokens'
+
+const managedDatasetSpecs = (input: CreateManagedDatasetInput) =>
+    input.datasets.map((dataset) => ({
+        media_type: dataset.mediaType,
+        resolution: dataset.resolution,
+        num_repeats: dataset.numRepeats,
+        ...(dataset.targetFrames ? { target_frames: dataset.targetFrames } : {}),
+        additional_options: dataset.additionalOptions,
+        captions: dataset.captions,
+        existing_files: dataset.existingFiles ?? [],
+        existing_control_files: dataset.existingControlFiles ?? [],
+        file_count: dataset.files.length,
+        caption_file_count: dataset.captionFiles?.length ?? 0,
+        control_file_count: dataset.controlFiles?.length ?? 0
+    }))
+
+const managedFiles = (input: CreateManagedDatasetInput) =>
+    input.datasets.flatMap((dataset) => [
+        ...dataset.files.map((file) => ({ file, kind: 'file_tokens' as const })),
+        ...(dataset.captionFiles ?? []).map((file) => ({
+            file,
+            kind: 'caption_file_tokens' as const
+        })),
+        ...(dataset.controlFiles ?? []).map((file) => ({
+            file,
+            kind: 'control_file_tokens' as const
+        }))
+    ])
+
+const uploadManagedSequentially = async (
+    input: CreateManagedDatasetInput,
+    finalize: (sessionId: string, payload: Record<string, unknown>) => Promise<DatasetConfig>
+) => {
+    const session = (await apiClient.post<{ id: string }>('/api/datasets/managed/upload-sessions'))
+        .data
+    const uploads = managedFiles(input)
+    const totalBytes = uploads.reduce((total, upload) => total + upload.file.size, 0)
+    const tokens: Record<StagedFileKind, string[]> = {
+        file_tokens: [],
+        caption_file_tokens: [],
+        control_file_tokens: []
+    }
+    let completedBytes = 0
+    let finalized = false
+
+    try {
+        for (const [index, upload] of uploads.entries()) {
+            const form = new FormData()
+            form.append('file', upload.file)
+            input.onProgress?.({
+                phase: 'uploading',
+                completedFiles: index,
+                totalFiles: uploads.length,
+                currentFile: upload.file.name,
+                uploadedBytes: completedBytes,
+                totalBytes,
+                percent: totalBytes ? (completedBytes / totalBytes) * 100 : 0
+            })
+            const staged = (
+                await apiClient.post<{ token: string }>(
+                    `/api/datasets/managed/upload-sessions/${session.id}/files`,
+                    form,
+                    {
+                        timeout: 0,
+                        onUploadProgress: (event) => {
+                            const ratio = event.total ? Math.min(1, event.loaded / event.total) : 0
+                            const currentBytes = Math.round(upload.file.size * ratio)
+                            const uploadedBytes = completedBytes + currentBytes
+                            input.onProgress?.({
+                                phase: 'uploading',
+                                completedFiles: index,
+                                totalFiles: uploads.length,
+                                currentFile: upload.file.name,
+                                uploadedBytes,
+                                totalBytes,
+                                percent: totalBytes ? (uploadedBytes / totalBytes) * 100 : 0
+                            })
+                        }
+                    }
+                )
+            ).data
+            tokens[upload.kind].push(staged.token)
+            completedBytes += upload.file.size
+            input.onProgress?.({
+                phase: 'uploading',
+                completedFiles: index + 1,
+                totalFiles: uploads.length,
+                currentFile: upload.file.name,
+                uploadedBytes: completedBytes,
+                totalBytes,
+                percent: totalBytes ? (completedBytes / totalBytes) * 100 : 100
+            })
+        }
+
+        input.onProgress?.({
+            phase: 'finalizing',
+            completedFiles: uploads.length,
+            totalFiles: uploads.length,
+            uploadedBytes: completedBytes,
+            totalBytes,
+            percent: 100
+        })
+        const dataset = await finalize(session.id, {
+            name: input.name,
+            description: input.description,
+            batch_size: input.batchSize,
+            enable_bucket: input.enableBucket,
+            bucket_no_upscale: input.bucketNoUpscale,
+            dataset_specs: managedDatasetSpecs(input),
+            ...tokens
+        })
+        finalized = true
+        return dataset
+    } finally {
+        if (!finalized) {
+            await apiClient
+                .delete(`/api/datasets/managed/upload-sessions/${session.id}`)
+                .catch(() => undefined)
+        }
+    }
+}
+
 export const datasetsApi = {
     list: async () => (await apiClient.get<DatasetSummary[]>('/api/datasets')).data,
     get: async (configId: string) =>
@@ -189,71 +327,30 @@ export const datasetsApi = {
         if (name) form.append('name', name)
         return (await apiClient.post<DatasetConfig>('/api/datasets/import', form)).data
     },
-    createManaged: async (input: CreateManagedDatasetInput) => {
-        const form = new FormData()
-        form.append('name', input.name)
-        if (input.description) form.append('description', input.description)
-        form.append(
-            'dataset_specs',
-            JSON.stringify(
-                input.datasets.map((dataset) => ({
-                    media_type: dataset.mediaType,
-                    resolution: dataset.resolution,
-                    num_repeats: dataset.numRepeats,
-                    ...(dataset.targetFrames ? { target_frames: dataset.targetFrames } : {}),
-                    captions: dataset.captions,
-                    file_count: dataset.files.length,
-                    caption_file_count: dataset.captionFiles?.length ?? 0,
-                    control_file_count: dataset.controlFiles?.length ?? 0
-                }))
-            )
-        )
-        input.datasets.forEach((dataset) => {
-            dataset.files.forEach((file) => form.append('files', file))
-            dataset.captionFiles?.forEach((file) => form.append('caption_files', file))
-            dataset.controlFiles?.forEach((file) => form.append('control_files', file))
-        })
-
-        return (
-            await apiClient.post<DatasetConfig>('/api/datasets/managed/batch', form, {
-                // Large video datasets can legitimately take much longer than the shared API timeout.
-                timeout: 0
-            })
-        ).data
-    },
-    updateManaged: async (input: UpdateManagedDatasetInput) => {
-        const form = new FormData()
-        form.append('name', input.name)
-        form.append('description', input.description ?? '')
-        form.append(
-            'dataset_specs',
-            JSON.stringify(
-                input.datasets.map((dataset) => ({
-                    media_type: dataset.mediaType,
-                    resolution: dataset.resolution,
-                    num_repeats: dataset.numRepeats,
-                    ...(dataset.targetFrames ? { target_frames: dataset.targetFrames } : {}),
-                    captions: dataset.captions,
-                    existing_files: dataset.existingFiles ?? [],
-                    existing_control_files: dataset.existingControlFiles ?? [],
-                    file_count: dataset.files.length,
-                    caption_file_count: dataset.captionFiles?.length ?? 0,
-                    control_file_count: dataset.controlFiles?.length ?? 0
-                }))
-            )
-        )
-        input.datasets.forEach((dataset) => {
-            dataset.files.forEach((file) => form.append('files', file))
-            dataset.captionFiles?.forEach((file) => form.append('caption_files', file))
-            dataset.controlFiles?.forEach((file) => form.append('control_files', file))
-        })
-
-        return (
-            await apiClient.put<DatasetConfig>(`/api/datasets/${input.configId}/managed`, form, {
-                timeout: 0
-            })
-        ).data
-    },
+    createManaged: async (input: CreateManagedDatasetInput) =>
+        uploadManagedSequentially(
+            input,
+            async (sessionId, payload) =>
+                (
+                    await apiClient.post<DatasetConfig>(
+                        `/api/datasets/managed/upload-sessions/${sessionId}/finalize`,
+                        payload,
+                        { timeout: 0 }
+                    )
+                ).data
+        ),
+    updateManaged: async (input: UpdateManagedDatasetInput) =>
+        uploadManagedSequentially(
+            input,
+            async (sessionId, payload) =>
+                (
+                    await apiClient.put<DatasetConfig>(
+                        `/api/datasets/managed/upload-sessions/${sessionId}/datasets/${input.configId}/finalize`,
+                        payload,
+                        { timeout: 0 }
+                    )
+                ).data
+        ),
     remove: async (configId: string) => {
         await apiClient.delete(`/api/datasets/${configId}`)
     },

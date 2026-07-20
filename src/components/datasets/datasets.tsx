@@ -4,6 +4,7 @@ import {
     type DatasetSummary,
     type ManagedDatasetManifest,
     type ManagedDatasetInput,
+    type ManagedUploadProgress,
     type UpdateManagedDatasetInput,
     datasetsApi,
     queryKeys
@@ -30,7 +31,16 @@ import {
     DialogHeader,
     DialogTitle
 } from '@/components/ui/dialog'
-import { Button, Card, CardBody, Input, Textarea, Typography } from '@/components/ui/legacy'
+import {
+    Button,
+    Card,
+    CardBody,
+    Checkbox,
+    Input,
+    Progress,
+    Textarea,
+    Typography
+} from '@/components/ui/legacy'
 import { cn } from '@/lib/utils'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -83,6 +93,7 @@ type DatasetDraft = {
     height: string
     targetFrames: string
     numRepeats: string
+    additionalOptions: string
     selectedMedia: SelectedMedia[]
     selectedControls: SelectedControl[]
     selectionError?: string
@@ -97,22 +108,36 @@ const createDatasetDraft = (): DatasetDraft => ({
     height: '1024',
     targetFrames: '1, 25, 49',
     numRepeats: '1',
+    additionalOptions: '',
     selectedMedia: [],
     selectedControls: []
 })
 
 const datasetSettingsStorageKey = 'musubi-tuner-dataset-settings'
-const datasetSettingsVersion = 1
+const datasetSettingsVersion = 2
+
+type DatasetGeneralSettings = {
+    batchSize: string
+    enableBucket: boolean
+    bucketNoUpscale: boolean
+}
+
+const defaultGeneralSettings: DatasetGeneralSettings = {
+    batchSize: '1',
+    enableBucket: true,
+    bucketNoUpscale: false
+}
 
 type StoredDatasetDraft = Pick<
     DatasetDraft,
-    'mediaType' | 'width' | 'height' | 'targetFrames' | 'numRepeats'
+    'mediaType' | 'width' | 'height' | 'targetFrames' | 'numRepeats' | 'additionalOptions'
 >
 
 type StoredDatasetSettings = {
     version: typeof datasetSettingsVersion
     name: string
     description: string
+    general: DatasetGeneralSettings
     drafts: StoredDatasetDraft[]
 }
 
@@ -125,14 +150,27 @@ const isStoredDatasetDraft = (value: unknown): value is StoredDatasetDraft =>
     typeof value.width === 'string' &&
     typeof value.height === 'string' &&
     typeof value.targetFrames === 'string' &&
-    typeof value.numRepeats === 'string'
+    typeof value.numRepeats === 'string' &&
+    typeof value.additionalOptions === 'string'
+
+const isDatasetGeneralSettings = (value: unknown): value is DatasetGeneralSettings =>
+    isRecord(value) &&
+    typeof value.batchSize === 'string' &&
+    typeof value.enableBucket === 'boolean' &&
+    typeof value.bucketNoUpscale === 'boolean'
 
 const readDatasetSettings = (): {
     name: string
     description: string
+    general: DatasetGeneralSettings
     drafts: DatasetDraft[]
 } => {
-    const fallback = { name: '', description: '', drafts: [createDatasetDraft()] }
+    const fallback = {
+        name: '',
+        description: '',
+        general: defaultGeneralSettings,
+        drafts: [createDatasetDraft()]
+    }
     try {
         const serialized = window.sessionStorage.getItem(datasetSettingsStorageKey)
         if (!serialized) return fallback
@@ -142,6 +180,7 @@ const readDatasetSettings = (): {
             parsed.version !== datasetSettingsVersion ||
             typeof parsed.name !== 'string' ||
             typeof parsed.description !== 'string' ||
+            !isDatasetGeneralSettings(parsed.general) ||
             !Array.isArray(parsed.drafts) ||
             !parsed.drafts.length ||
             !parsed.drafts.every(isStoredDatasetDraft)
@@ -151,6 +190,7 @@ const readDatasetSettings = (): {
         return {
             name: parsed.name,
             description: parsed.description,
+            general: parsed.general,
             drafts: parsed.drafts.slice(0, 50).map((draft) => ({
                 id: `dataset-draft-${++nextDraftId}`,
                 ...draft,
@@ -262,6 +302,49 @@ const numberPair = (value: unknown): [number, number] | undefined =>
         ? [value[0], value[1]]
         : undefined
 
+const managedDatasetOptionKeys = new Set([
+    'image_directory',
+    'image_jsonl_file',
+    'video_directory',
+    'video_jsonl_file',
+    'cache_directory',
+    'caption_extension',
+    'control_directory',
+    'resolution',
+    'num_repeats',
+    'target_frames',
+    'batch_size',
+    'enable_bucket',
+    'bucket_no_upscale'
+])
+
+const tomlKey = (key: string) => (/^[A-Za-z0-9_-]+$/.test(key) ? key : JSON.stringify(key))
+
+const tomlValue = (value: unknown): string => {
+    if (typeof value === 'string') return JSON.stringify(value)
+    if (typeof value === 'boolean') return value ? 'true' : 'false'
+    if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+    if (Array.isArray(value)) return `[${value.map(tomlValue).join(', ')}]`
+    return JSON.stringify(String(value))
+}
+
+const additionalOptionsFromDataset = (dataset: Record<string, unknown>) =>
+    Object.entries(dataset)
+        .filter(([key]) => !managedDatasetOptionKeys.has(key))
+        .map(([key, value]) => `${tomlKey(key)} = ${tomlValue(value)}`)
+        .join('\n')
+
+const generalSettingsFromConfig = (config: DatasetConfig): DatasetGeneralSettings => ({
+    batchSize:
+        typeof config.general.batch_size === 'number' ? String(config.general.batch_size) : '1',
+    enableBucket:
+        typeof config.general.enable_bucket === 'boolean' ? config.general.enable_bucket : true,
+    bucketNoUpscale:
+        typeof config.general.bucket_no_upscale === 'boolean'
+            ? config.general.bucket_no_upscale
+            : false
+})
+
 const draftsFromManagedDataset = (
     config: DatasetConfig,
     manifest: ManagedDatasetManifest
@@ -280,6 +363,7 @@ const draftsFromManagedDataset = (
             height: String(resolution[1]),
             targetFrames: targetFrames.join(', '),
             numRepeats: typeof dataset.num_repeats === 'number' ? String(dataset.num_repeats) : '1',
+            additionalOptions: additionalOptionsFromDataset(dataset),
             selectedMedia: managedDataset.files.map((media) => ({
                 id: `existing-media:${media.path}`,
                 name: media.name,
@@ -518,6 +602,7 @@ const managedInputFromDraft = (draft: DatasetDraft): ManagedDatasetInput => {
         numRepeats: values.numericRepeats,
         targetFrames:
             draft.mediaType === 'video' ? (values.parsedTargetFrames ?? undefined) : undefined,
+        additionalOptions: draft.additionalOptions.trim(),
         files: newMedia.map((media) => media.file),
         captions: newMedia.map((media) => media.caption.trim()),
         controlFiles: newControls.length ? newControls.map((control) => control.file) : undefined,
@@ -528,6 +613,110 @@ const managedInputFromDraft = (draft: DatasetDraft): ManagedDatasetInput => {
             control.existingPath ? [control.existingPath] : []
         )
     }
+}
+
+type GeneralSettingsEditorProps = {
+    value: DatasetGeneralSettings
+    attemptedSubmit: boolean
+    onChange: (value: DatasetGeneralSettings) => void
+    onTouched: () => void
+}
+
+const GeneralSettingsEditor = ({
+    value,
+    attemptedSubmit,
+    onChange,
+    onTouched
+}: GeneralSettingsEditorProps) => {
+    const numericBatchSize = Number(value.batchSize)
+    const validBatchSize = Number.isSafeInteger(numericBatchSize) && numericBatchSize > 0
+    const change = (update: Partial<DatasetGeneralSettings>) => {
+        onTouched()
+        onChange({ ...value, ...update })
+    }
+
+    return (
+        <section className="mt-6 rounded-xl border border-border bg-muted/30 p-4 sm:p-5">
+            <div className="mb-4">
+                <h2 className="font-semibold text-foreground">General TOML settings</h2>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    These required values are written once under [general] and apply to every
+                    dataset below.
+                </p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-[minmax(10rem,0.6fr)_1fr_1fr] sm:items-start">
+                <div>
+                    <Input
+                        required
+                        type="number"
+                        min={1}
+                        step={1}
+                        size="lg"
+                        label="Batch size"
+                        value={value.batchSize}
+                        error={attemptedSubmit && !validBatchSize}
+                        containerProps={inputContainerProps}
+                        onChange={(event) => change({ batchSize: event.target.value })}
+                    />
+                    <p className="mt-2 font-mono text-xs text-muted-foreground">
+                        batch_size = {validBatchSize ? numericBatchSize : '…'}
+                    </p>
+                </div>
+                <div className="rounded-lg border border-border bg-card p-4">
+                    <Checkbox
+                        checked={value.enableBucket}
+                        label="Enable aspect-ratio buckets"
+                        onChange={(event) => change({ enableBucket: event.target.checked })}
+                    />
+                    <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                        enable_bucket = {String(value.enableBucket)}
+                    </p>
+                </div>
+                <div className="rounded-lg border border-border bg-card p-4">
+                    <Checkbox
+                        checked={value.bucketNoUpscale}
+                        label="Do not upscale buckets"
+                        onChange={(event) => change({ bucketNoUpscale: event.target.checked })}
+                    />
+                    <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                        bucket_no_upscale = {String(value.bucketNoUpscale)}
+                    </p>
+                </div>
+            </div>
+        </section>
+    )
+}
+
+const UploadProgressPanel = ({ progress }: { progress: ManagedUploadProgress }) => {
+    const percent = Math.max(0, Math.min(100, progress.percent))
+    return (
+        <div
+            className="mt-5 rounded-lg border border-primary/20 bg-accent/40 p-4"
+            aria-live="polite"
+        >
+            <div className="mb-2 flex items-center justify-between gap-3 text-sm">
+                <p className="font-semibold text-foreground">
+                    {progress.phase === 'finalizing'
+                        ? 'Finalizing dataset configuration…'
+                        : `Uploading file ${Math.min(progress.completedFiles + 1, progress.totalFiles)} of ${progress.totalFiles}`}
+                </p>
+                <span className="shrink-0 font-mono text-xs text-muted-foreground">
+                    {Math.round(percent)}%
+                </span>
+            </div>
+            <Progress value={percent} />
+            <div className="mt-2 flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                <span className="min-w-0 truncate" title={progress.currentFile}>
+                    {progress.phase === 'finalizing'
+                        ? 'Saving TOML and captions'
+                        : progress.currentFile}
+                </span>
+                <span className="shrink-0">
+                    {formatFileSize(progress.uploadedBytes)} / {formatFileSize(progress.totalBytes)}
+                </span>
+            </div>
+        </div>
+    )
 }
 
 type DatasetEditorProps = {
@@ -566,6 +755,7 @@ const DatasetEditor = ({
         change((current) => ({
             ...current,
             mediaType,
+            additionalOptions: '',
             selectedMedia: [],
             selectedControls: [],
             selectionError: undefined
@@ -794,6 +984,33 @@ const DatasetEditor = ({
                 ) : null}
             </div>
 
+            <div className="mt-5 rounded-lg border border-border bg-card p-4">
+                <Textarea
+                    label="Additional TOML options"
+                    value={draft.additionalOptions}
+                    rows={6}
+                    spellCheck={false}
+                    maxLength={65536}
+                    placeholder={
+                        draft.mediaType === 'video'
+                            ? 'frame_extraction = "head"\nsource_fps = 30.0'
+                            : 'multiple_target = false\ncontrol_resolution = [1024, 1024]'
+                    }
+                    className="min-h-36 resize-y font-mono text-sm leading-6"
+                    onChange={(event) =>
+                        change((current) => ({
+                            ...current,
+                            additionalOptions: event.target.value
+                        }))
+                    }
+                />
+                <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                    Enter key/value lines for this [[datasets]] section. Managed paths, resolution,
+                    repeats, target frames, and the general settings above stay controlled by their
+                    form fields.
+                </p>
+            </div>
+
             <div className="mt-5">
                 <label
                     htmlFor={mediaInputId}
@@ -1013,16 +1230,27 @@ const ManagedDatasetEditDialog = ({
 }: ManagedDatasetEditDialogProps) => {
     const [name, setName] = useState(config.name)
     const [description, setDescription] = useState(config.description ?? '')
+    const [general, setGeneral] = useState<DatasetGeneralSettings>(() =>
+        generalSettingsFromConfig(config)
+    )
     const [drafts, setDrafts] = useState<DatasetDraft[]>(() =>
         draftsFromManagedDataset(config, manifest)
     )
     const [attemptedSubmit, setAttemptedSubmit] = useState(false)
+    const [uploadProgress, setUploadProgress] = useState<ManagedUploadProgress>()
     const updateMutation = useMutation({
         mutationFn: datasetsApi.updateManaged,
-        onSuccess: onSaved
+        onSuccess: (dataset) => {
+            setUploadProgress(undefined)
+            onSaved(dataset)
+        },
+        onError: () => setUploadProgress(undefined)
     })
+    const numericBatchSize = Number(general.batchSize)
     const formIsValid =
         Boolean(name.trim()) &&
+        Number.isSafeInteger(numericBatchSize) &&
+        numericBatchSize > 0 &&
         drafts.length > 0 &&
         drafts.every((draft) => getDraftValues(draft).isValid)
     const uploadFileCount = drafts.reduce(
@@ -1046,7 +1274,11 @@ const ManagedDatasetEditDialog = ({
             configId: config.id,
             name: name.trim(),
             description: description.trim() || undefined,
-            datasets: drafts.map(managedInputFromDraft)
+            batchSize: numericBatchSize,
+            enableBucket: general.enableBucket,
+            bucketNoUpscale: general.bucketNoUpscale,
+            datasets: drafts.map(managedInputFromDraft),
+            onProgress: setUploadProgress
         }
         updateMutation.mutate(input)
     }
@@ -1103,6 +1335,13 @@ const ManagedDatasetEditDialog = ({
                         </div>
                     </div>
 
+                    <GeneralSettingsEditor
+                        value={general}
+                        attemptedSubmit={attemptedSubmit}
+                        onChange={setGeneral}
+                        onTouched={resetError}
+                    />
+
                     <div className="mt-6 flex flex-col gap-5">
                         {drafts.map((draft, index) => (
                             <DatasetEditor
@@ -1142,6 +1381,8 @@ const ManagedDatasetEditDialog = ({
                         Add another dataset to this TOML
                     </ShadcnButton>
 
+                    {uploadProgress ? <UploadProgressPanel progress={uploadProgress} /> : null}
+
                     <DialogFooter className="mt-6">
                         <ShadcnButton
                             type="button"
@@ -1158,7 +1399,9 @@ const ManagedDatasetEditDialog = ({
                                 <PencilIcon data-icon="inline-start" />
                             )}
                             {updateMutation.isPending
-                                ? `Uploading ${uploadFileCount} new file${uploadFileCount === 1 ? '' : 's'}…`
+                                ? uploadProgress?.phase === 'finalizing'
+                                    ? 'Finalizing dataset…'
+                                    : `Uploading ${uploadProgress?.completedFiles ?? 0}/${uploadFileCount} files…`
                                 : 'Save dataset changes'}
                         </ShadcnButton>
                     </DialogFooter>
@@ -1173,10 +1416,12 @@ const Datasets = () => {
     const initialSettings = useMemo(readDatasetSettings, [])
     const [name, setName] = useState(initialSettings.name)
     const [description, setDescription] = useState(initialSettings.description)
+    const [general, setGeneral] = useState<DatasetGeneralSettings>(initialSettings.general)
     const [drafts, setDrafts] = useState<DatasetDraft[]>(initialSettings.drafts)
     const [successMessage, setSuccessMessage] = useState<string>()
     const [successWarnings, setSuccessWarnings] = useState<string[]>([])
     const [attemptedSubmit, setAttemptedSubmit] = useState(false)
+    const [uploadProgress, setUploadProgress] = useState<ManagedUploadProgress>()
     const [editing, setEditing] = useState<{
         config: DatasetConfig
         manifest: ManagedDatasetManifest
@@ -1201,23 +1446,31 @@ const Datasets = () => {
             version: datasetSettingsVersion,
             name,
             description,
-            drafts: drafts.map(({ mediaType, width, height, targetFrames, numRepeats }) => ({
-                mediaType,
-                width,
-                height,
-                targetFrames,
-                numRepeats
-            }))
+            general,
+            drafts: drafts.map(
+                ({ mediaType, width, height, targetFrames, numRepeats, additionalOptions }) => ({
+                    mediaType,
+                    width,
+                    height,
+                    targetFrames,
+                    numRepeats,
+                    additionalOptions
+                })
+            )
         }
         try {
             window.sessionStorage.setItem(datasetSettingsStorageKey, JSON.stringify(settings))
         } catch {
             // Keep the live form usable when storage is blocked or full.
         }
-    }, [description, drafts, name])
+    }, [description, drafts, general, name])
 
+    const numericBatchSize = Number(general.batchSize)
     const formIsValid =
-        Boolean(name.trim()) && drafts.every((draft) => getDraftValues(draft).isValid)
+        Boolean(name.trim()) &&
+        Number.isSafeInteger(numericBatchSize) &&
+        numericBatchSize > 0 &&
+        drafts.every((draft) => getDraftValues(draft).isValid)
     const uploadFileCount = drafts.reduce(
         (total, draft) => total + draft.selectedMedia.length + draft.selectedControls.length,
         0
@@ -1226,14 +1479,17 @@ const Datasets = () => {
     const createMutation = useMutation({
         mutationFn: datasetsApi.createManaged,
         onSuccess: async (dataset) => {
+            setUploadProgress(undefined)
             setSuccessMessage(`Dataset “${dataset.name}” was created successfully.`)
             setSuccessWarnings(dataset.warnings ?? [])
             setName('')
             setDescription('')
+            setGeneral(defaultGeneralSettings)
             setDrafts([createDatasetDraft()])
             setAttemptedSubmit(false)
             await queryClient.invalidateQueries({ queryKey: queryKeys.datasets })
-        }
+        },
+        onError: () => setUploadProgress(undefined)
     })
 
     const clearCreationResult = () => {
@@ -1283,7 +1539,11 @@ const Datasets = () => {
         const input: CreateManagedDatasetInput = {
             name: name.trim(),
             description: description.trim() || undefined,
-            datasets: drafts.map(managedInputFromDraft)
+            batchSize: numericBatchSize,
+            enableBucket: general.enableBucket,
+            bucketNoUpscale: general.bucketNoUpscale,
+            datasets: drafts.map(managedInputFromDraft),
+            onProgress: setUploadProgress
         }
         createMutation.mutate(input)
     }
@@ -1401,6 +1661,13 @@ const Datasets = () => {
                                 </div>
                             </div>
 
+                            <GeneralSettingsEditor
+                                value={general}
+                                attemptedSubmit={attemptedSubmit}
+                                onChange={setGeneral}
+                                onTouched={clearCreationResult}
+                            />
+
                             <div className="mt-6 flex flex-col gap-5">
                                 {drafts.map((draft, index) => (
                                     <DatasetEditor
@@ -1439,6 +1706,10 @@ const Datasets = () => {
                                 Add another dataset to this TOML
                             </button>
 
+                            {uploadProgress ? (
+                                <UploadProgressPanel progress={uploadProgress} />
+                            ) : null}
+
                             <Button
                                 type="submit"
                                 color="blue"
@@ -1452,7 +1723,9 @@ const Datasets = () => {
                                     <CircleStackIcon className="h-5 w-5" />
                                 )}
                                 {createMutation.isPending
-                                    ? `Uploading ${uploadFileCount} files…`
+                                    ? uploadProgress?.phase === 'finalizing'
+                                        ? 'Finalizing dataset…'
+                                        : `Uploading ${uploadProgress?.completedFiles ?? 0}/${uploadFileCount} files…`
                                     : `Create TOML with ${drafts.length} dataset${drafts.length === 1 ? '' : 's'}`}
                             </Button>
                         </form>
