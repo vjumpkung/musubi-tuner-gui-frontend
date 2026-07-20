@@ -97,6 +97,8 @@ the request.
 | `script_id`            | Script filename                         |
 | ---------------------- | --------------------------------------- |
 | `flux2-dev`            | `download_flux2_dev.sh`                 |
+| `flux2-klein-base-4b`  | `download_flux2_klein_base_4b.sh`       |
+| `flux2-klein-base-9b`  | `download_flux2_klein_base_9b.sh`       |
 | `flux-kontext-dev`     | `download_flux_kontext_dev.sh`          |
 | `framepack`            | `download_framepack.sh`                 |
 | `hidream-o1`           | `download_hidream_o1.sh`                |
@@ -125,9 +127,14 @@ Request:
 ```json
 {
     "script_id": "flux2-dev",
-    "destination": "/workspace"
+    "destination": "/workspace",
+    "hf_token": "hf_example"
 }
 ```
+
+`hf_token` is optional. When provided, pass it to the allowlisted process as the `HF_TOKEN`
+environment variable. Never include it in a job response, status message, error, or log; redact
+the exact token if a download script writes it to stdout or stderr.
 
 Return HTTP `202` with a job:
 
@@ -352,6 +359,8 @@ string or script path:
 - The dataset config snapshot is written to `{DATA_ROOT}/jobs/{job_id}/dataset_config.toml` and
   its path is passed as `--dataset_config`; the client cannot point the trainer at an arbitrary
   file.
+- `values.savePrecision`, when present, must be `bf16`, `fp16`, or `fp32` and is passed to every
+  trainer as `--save_precision`.
 - `values.extraArgs` is split with `shlex.split` and appended as individual argv items. Each
   token must match `^[A-Za-z0-9_.\/=:,+()\-]+$`; anything else returns `400`. There is no shell
   involved (`create_subprocess_exec` only), so this guards against confusing flags rather than

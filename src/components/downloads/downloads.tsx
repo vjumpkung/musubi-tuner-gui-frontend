@@ -1,5 +1,6 @@
 import { type DownloadJob, type DownloadStatus, downloadsApi, queryKeys } from '../../api/api'
 import { getApiErrorMessage } from '../../api/client'
+import useDownloadSettings from '../../hooks/useDownloadSettings'
 import { downloadFamilies, downloadModels, type DownloadModel } from './catalog'
 import { Button, Card, CardBody, Input, Option, Select, Typography } from '@/components/ui/legacy'
 import { cn } from '@/lib/utils'
@@ -185,6 +186,7 @@ const DownloadRow = ({
 
 const Downloads = () => {
     const queryClient = useQueryClient()
+    const hfToken = useDownloadSettings((state) => state.hfToken)
     const [destination, setDestination] = useState('.')
     const [query, setQuery] = useState('')
     const [family, setFamily] = useState(downloadFamilies[0])
@@ -223,7 +225,7 @@ const Downloads = () => {
 
     const startMutation = useMutation({
         mutationFn: ({ model }: { model: DownloadModel }) =>
-            downloadsApi.start(model.id, destination.trim()),
+            downloadsApi.start(model.id, destination.trim(), hfToken),
         onSuccess: (job, { model }) => {
             queryClient.setQueryData(queryKeys.download(job.id), job)
             setJobIds((current) => ({ ...current, [model.id]: job.id }))

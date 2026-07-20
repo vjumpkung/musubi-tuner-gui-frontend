@@ -1,10 +1,12 @@
 import useAccelerationSettings from '../../hooks/useAccelerationSettings'
+import useDownloadSettings from '../../hooks/useDownloadSettings'
 import { Button, Card, CardBody, Input, Option, Select, Typography } from '@/components/ui/legacy'
 import {
     RefreshCwIcon as ArrowPathIcon,
     ZapIcon as BoltIcon,
     CpuIcon as CpuChipIcon,
     InfoIcon as InformationCircleIcon,
+    KeyRoundIcon as KeyIcon,
     ServerIcon as ServerStackIcon
 } from 'lucide-react'
 
@@ -14,6 +16,9 @@ const Settings = () => {
     const settings = useAccelerationSettings((state) => state.settings)
     const setSetting = useAccelerationSettings((state) => state.setSetting)
     const resetSettings = useAccelerationSettings((state) => state.resetSettings)
+    const hfToken = useDownloadSettings((state) => state.hfToken)
+    const setHfToken = useDownloadSettings((state) => state.setHfToken)
+    const clearHfToken = useDownloadSettings((state) => state.clearHfToken)
 
     const cpuThreads = settings.numCpuThreadsPerProcess || 'trainer default'
 
@@ -24,15 +29,14 @@ const Settings = () => {
                     <div className="max-w-3xl">
                         <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-primary">
                             <BoltIcon className="h-4 w-4" />
-                            Launch configuration
+                            Application configuration
                         </div>
                         <Typography variant="h1" color="blue-gray">
-                            Acceleration settings
+                            Settings
                         </Typography>
                         <p className="mt-2 max-w-2xl text-base leading-7 text-muted-foreground">
-                            Set the shared Accelerate launch options used by every training page.
-                            Changes are saved automatically in this browser and appear in generated
-                            commands immediately.
+                            Configure Hugging Face download authentication and the shared Accelerate
+                            launch options used by every training page.
                         </p>
                     </div>
                     <Button
@@ -43,13 +47,58 @@ const Settings = () => {
                         onClick={resetSettings}
                     >
                         <ArrowPathIcon className="h-5 w-5" />
-                        Restore defaults
+                        Restore acceleration defaults
                     </Button>
                 </div>
             </header>
 
             <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
                 <div className="flex flex-col gap-5">
+                    <Card className="border border-border shadow-sm">
+                        <CardBody className="p-5 sm:p-6">
+                            <div className="mb-6 flex items-start gap-3">
+                                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-accent text-primary">
+                                    <KeyIcon className="h-6 w-6" />
+                                </div>
+                                <div>
+                                    <Typography variant="h5" color="blue-gray">
+                                        Hugging Face authentication
+                                    </Typography>
+                                    <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                                        Provide a token for gated or private model downloads.
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                                <Input
+                                    type="password"
+                                    size="lg"
+                                    maxLength={2048}
+                                    label="Hugging Face token (HF_TOKEN)"
+                                    value={hfToken}
+                                    autoComplete="off"
+                                    spellCheck={false}
+                                    containerProps={inputContainerProps}
+                                    onChange={(event) => setHfToken(event.target.value)}
+                                />
+                                <Button
+                                    type="button"
+                                    variant="outlined"
+                                    color="blue-gray"
+                                    className="min-h-11 shrink-0 px-5 py-3"
+                                    disabled={!hfToken}
+                                    onClick={clearHfToken}
+                                >
+                                    Clear token
+                                </Button>
+                            </div>
+                            <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                                Sent only when a download starts and kept only in this tab’s memory.
+                                Reloading the page clears it.
+                            </p>
+                        </CardBody>
+                    </Card>
+
                     <Card className="border border-border shadow-sm">
                         <CardBody className="p-5 sm:p-6">
                             <div className="mb-6 flex items-start gap-3">
@@ -213,10 +262,16 @@ const Settings = () => {
                                         {cpuThreads}
                                     </dd>
                                 </div>
+                                <div className="flex justify-between gap-4 border-t border-border pt-3">
+                                    <dt className="text-muted-foreground">HF downloads</dt>
+                                    <dd className="text-right font-medium text-foreground">
+                                        {hfToken ? 'Token ready' : 'Server/default auth'}
+                                    </dd>
+                                </div>
                             </dl>
                             <p className="mt-5 rounded-lg bg-accent p-3 text-xs leading-5 text-primary">
-                                Mixed precision stays model-specific and is selected on each
-                                training page.
+                                Acceleration changes are saved automatically in this browser. Model
+                                and save precision stay on each training page.
                             </p>
                         </CardBody>
                     </Card>

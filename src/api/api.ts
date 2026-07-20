@@ -162,11 +162,12 @@ export const queryKeys = {
 }
 
 export const downloadsApi = {
-    start: async (scriptId: string, destination: string) =>
+    start: async (scriptId: string, destination: string, hfToken?: string) =>
         (
             await apiClient.post<DownloadJob>('/api/downloads', {
                 script_id: scriptId,
-                destination
+                destination,
+                hf_token: hfToken?.trim() || undefined
             })
         ).data,
     get: async (jobId: string) =>

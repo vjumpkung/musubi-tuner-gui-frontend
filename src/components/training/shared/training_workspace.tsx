@@ -205,6 +205,7 @@ const buildCommands = (
         ...argument('--optimizer_type', 'optimizer'),
         ...argument('--lr_scheduler', 'scheduler'),
         ...argument('--mixed_precision', 'mixedPrecision'),
+        ...argument('--save_precision', 'savePrecision'),
         ...argument('--timestep_sampling', 'timestepSampling'),
         ...argument('--weighting_scheme', 'weightingScheme'),
         ...argument('--logging_dir', 'loggingDir'),
@@ -1052,6 +1053,21 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
                                 />
                                 <p className="mt-2 text-xs leading-5 text-muted-foreground">
                                     Fixed by the reference script.
+                                </p>
+                            </div>
+                            <div>
+                                <Select
+                                    size="lg"
+                                    label="Save precision"
+                                    value={value('savePrecision')}
+                                    onChange={(next) => setValue('savePrecision', next ?? 'bf16')}
+                                >
+                                    <Option value="bf16">bf16</Option>
+                                    <Option value="fp16">fp16</Option>
+                                    <Option value="fp32">fp32</Option>
+                                </Select>
+                                <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                                    Precision used when writing LoRA checkpoints.
                                 </p>
                             </div>
                             <NumberField

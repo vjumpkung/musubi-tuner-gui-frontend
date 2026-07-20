@@ -28,6 +28,42 @@ export const downloadModels: DownloadModel[] = [
         trainingScripts: ['flux2_training_script.sh']
     },
     {
+        id: 'flux2-klein-base-4b',
+        name: 'FLUX.2 Klein Base 4B',
+        family: 'FLUX',
+        task: 'Image',
+        precision: 'BF16',
+        script: 'download_flux2_klein_base_4b.sh',
+        description: 'FLUX.2 Klein Base 4B DiT, AE VAE, and Qwen3 4B text encoder.',
+        files: [
+            'diffusion_models/flux-2-klein-base-4b.safetensors',
+            'vae/ae.safetensors',
+            'text_encoders/qwen3_4b/model-00001-of-00002.safetensors',
+            'text_encoders/qwen3_4b/model-00002-of-00002.safetensors'
+        ],
+        trainingScripts: ['flux2_training_script.sh'],
+        note: 'Requires Hugging Face authentication and access to all referenced repositories.'
+    },
+    {
+        id: 'flux2-klein-base-9b',
+        name: 'FLUX.2 Klein Base 9B',
+        family: 'FLUX',
+        task: 'Image',
+        precision: 'BF16',
+        script: 'download_flux2_klein_base_9b.sh',
+        description: 'FLUX.2 Klein Base 9B DiT, AE VAE, and Qwen3 8B text encoder.',
+        files: [
+            'diffusion_models/flux-2-klein-base-9b.safetensors',
+            'vae/ae.safetensors',
+            'text_encoders/qwen3_8b/model-00001-of-00004.safetensors',
+            'text_encoders/qwen3_8b/model-00002-of-00004.safetensors',
+            'text_encoders/qwen3_8b/model-00003-of-00004.safetensors',
+            'text_encoders/qwen3_8b/model-00004-of-00004.safetensors'
+        ],
+        trainingScripts: ['flux2_training_script.sh'],
+        note: 'Requires Hugging Face authentication and access to all referenced repositories.'
+    },
+    {
         id: 'flux-kontext-dev',
         name: 'FLUX.1 Kontext Dev',
         family: 'FLUX',
@@ -286,7 +322,7 @@ export const downloadModels: DownloadModel[] = [
             'vae/ae.safetensors',
             'text_encoders/qwen_3_4b.safetensors'
         ],
-        note: 'The current Z-Image training script uses a different default checkpoint filename.'
+        trainingScripts: ['z_image_turbo_training_script.sh']
     },
     {
         id: 'z-image-turbo',
@@ -300,8 +336,7 @@ export const downloadModels: DownloadModel[] = [
             'diffusion_models/z_image_turbo_bf16.safetensors',
             'vae/ae.safetensors',
             'text_encoders/qwen_3_4b.safetensors'
-        ],
-        trainingScripts: ['z_image_turbo_training_script.sh']
+        ]
     }
 ]
 

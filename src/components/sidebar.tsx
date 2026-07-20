@@ -36,7 +36,7 @@ const trainingItems = [
     { menu: Menu.KONTEXT_TRAINER, label: 'FLUX.1 Kontext' },
     { menu: Menu.FLUX_2_TRAINER, label: 'FLUX.2' },
     { menu: Menu.QWEN_TRAINER, label: 'Qwen Image' },
-    { menu: Menu.Z_IMAGE_TRAINER, label: 'Z-Image Turbo' },
+    { menu: Menu.Z_IMAGE_TRAINER, label: 'Z-Image' },
     { menu: Menu.HIDREAM_TRAINER, label: 'HiDream O1' },
     { menu: Menu.IDEOGRAM_TRAINER, label: 'Ideogram 4' },
     { menu: Menu.KANDINSKY_TRAINER, label: 'Kandinsky 5' },
@@ -224,7 +224,7 @@ const SideBar = ({ collapsed, onToggleCollapsed }: SideBarProps) => {
                         <ListItemPrefix>
                             <Cog6ToothIcon className="h-5 w-5" />
                         </ListItemPrefix>
-                        Acceleration
+                        Settings
                     </ListItem>
                     <ListItem {...menuItemProps(Menu.ABOUT)}>
                         <ListItemPrefix>

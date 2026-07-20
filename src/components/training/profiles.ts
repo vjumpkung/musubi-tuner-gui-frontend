@@ -113,6 +113,7 @@ const commonDefaults: TrainingValues = {
     huggingfaceToken: '',
     huggingfaceVisibility: 'private',
     asyncUpload: false,
+    savePrecision: 'bf16',
     extraArgs: ''
 }
 
@@ -896,16 +897,16 @@ export const trainingProfiles: Record<TrainingProfile['id'], TrainingProfile> = 
     },
     'z-image-turbo': {
         id: 'z-image-turbo',
-        name: 'Z-Image Turbo',
-        description: 'Train Z-Image Turbo LoRAs with Qwen3 conditioning and the Flux autoencoder.',
+        name: 'Z-Image',
+        description: 'Train Z-Image LoRAs with Qwen3 conditioning and the Flux autoencoder.',
         script: 'z_image_turbo_training_script.sh',
         trainer: 'zimage_train_network.py',
         networkModule: 'networks.lora_zimage',
         modelFields: [
             {
                 key: 'dit',
-                label: 'Z-Image Turbo DiT',
-                helper: 'BF16 Z-Image Turbo diffusion checkpoint.',
+                label: 'Z-Image DiT',
+                helper: 'BF16 Z-Image diffusion checkpoint.',
                 required: true,
                 trainFlag: '--dit'
             },
@@ -968,7 +969,7 @@ export const trainingProfiles: Record<TrainingProfile['id'], TrainingProfile> = 
         ],
         defaults: {
             ...commonDefaults,
-            dit: './diffusion_models/z_image_turbo_bf16.safetensors',
+            dit: './diffusion_models/z_image_bf16.safetensors',
             vae: './vae/ae.safetensors',
             textEncoder: './text_encoders/qwen_3_4b.safetensors',
             epochs: '10',
