@@ -1,4 +1,10 @@
-import { type TrainingArtifact, type TrainingJob, queryKeys, trainingApi } from '../../api/api'
+import {
+    type TrainingArtifact,
+    type TrainingJob,
+    type TrainingStage,
+    queryKeys,
+    trainingApi
+} from '../../api/api'
 import { getApiErrorMessage } from '../../api/client'
 import SystemMonitor from './system_monitor'
 import TerminalComponent from './terminal'
@@ -13,7 +19,9 @@ import {
     AlertDialogTitle,
     AlertDialogTrigger
 } from '@/components/ui/alert-dialog'
-import { Button, Card, CardBody, Progress, Typography } from '@/components/ui/legacy'
+import { Badge } from '@/components/ui/badge'
+import { Button, Card, CardBody, Typography } from '@/components/ui/legacy'
+import { Progress } from '@/components/ui/progress'
 import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -38,6 +46,35 @@ const statusStyles: Record<TrainingJob['status'], string> = {
     completed: 'bg-success-muted text-success-foreground',
     failed: 'bg-destructive/10 text-destructive',
     cancelled: 'bg-muted text-muted-foreground'
+}
+
+const stageLabels: Record<TrainingStage['key'], string> = {
+    cache_latents: 'Cache latents',
+    cache_text_encoder: 'Cache text encoder',
+    train: 'Train LoRA'
+}
+
+const stageStatusVariant = (status: TrainingStage['status']) => {
+    if (status === 'failed' || status === 'cancelled') return 'destructive'
+    if (status === 'completed') return 'default'
+    if (status === 'running') return 'secondary'
+    return 'outline'
+}
+
+const jobProgressPercent = (job: TrainingJob) => {
+    if (job.status === 'completed') return 100
+    return Math.min(100, Math.max(0, job.progress.percent ?? 0))
+}
+
+const stepProgressLabel = (job: TrainingJob) => {
+    const { step, total_steps: totalSteps } = job.progress
+    if (totalSteps) return `${step ?? 0} of ${totalSteps} steps`
+    if (job.status === 'queued') return 'Waiting in queue'
+    if (job.current_stage === 'train') return 'Waiting for trainer step output…'
+    if (job.status === 'failed') return 'Stopped before step progress was available'
+    if (job.status === 'cancelled') return 'Cancelled before step progress was available'
+    if (job.status === 'completed') return 'Training complete'
+    return 'Training steps begin after preparation'
 }
 
 const useJobLog = (jobId: string) => {
@@ -291,8 +328,8 @@ const LogViewer = () => {
                                     </p>
                                     {job.status === 'running' ? (
                                         <Progress
+                                            aria-label={`${job.name} training progress`}
                                             value={job.progress.percent ?? 0}
-                                            color="blue"
                                             className="mt-2"
                                         />
                                     ) : null}
@@ -393,20 +430,60 @@ const LogViewer = () => {
                                         ) : null}
                                     </div>
                                 </div>
-                                <div className="mt-4 grid gap-2 sm:grid-cols-3">
-                                    {selectedJob.stages.map((stage) => (
-                                        <div
-                                            key={stage.key}
-                                            className="rounded-lg bg-muted px-3 py-2 text-xs"
-                                        >
-                                            <p className="font-medium text-foreground">
-                                                {stage.key.replaceAll('_', ' ')}
+                                <div className="mt-5 flex flex-col gap-4 rounded-lg border border-border p-4">
+                                    <div className="flex items-start justify-between gap-4">
+                                        <div>
+                                            <p className="text-sm font-semibold text-foreground">
+                                                Training progress
                                             </p>
-                                            <p className="mt-0.5 capitalize text-muted-foreground">
-                                                {stage.status}
+                                            <p
+                                                className="mt-1 text-xs text-muted-foreground"
+                                                aria-live="polite"
+                                            >
+                                                {stepProgressLabel(selectedJob)}
+                                                {selectedJob.progress.total_epochs
+                                                    ? ` · Epoch ${selectedJob.progress.epoch ?? 0} of ${selectedJob.progress.total_epochs}`
+                                                    : ''}
                                             </p>
                                         </div>
-                                    ))}
+                                        <Badge variant="outline">
+                                            {Math.round(jobProgressPercent(selectedJob))}%
+                                        </Badge>
+                                    </div>
+                                    <Progress
+                                        aria-label={`${selectedJob.name} training progress`}
+                                        aria-valuetext={stepProgressLabel(selectedJob)}
+                                        className="h-2"
+                                        value={jobProgressPercent(selectedJob)}
+                                    />
+                                    <Separator />
+                                    <div className="grid gap-2 sm:grid-cols-3">
+                                        {selectedJob.stages.map((stage, index) => (
+                                            <div
+                                                key={stage.key}
+                                                className={cn(
+                                                    'flex items-center justify-between gap-3 rounded-lg border border-border p-3',
+                                                    stage.status === 'running' &&
+                                                        'border-primary/30 bg-accent'
+                                                )}
+                                            >
+                                                <div className="min-w-0">
+                                                    <p className="text-xs text-muted-foreground">
+                                                        Stage {index + 1}
+                                                    </p>
+                                                    <p className="truncate text-sm font-medium text-foreground">
+                                                        {stageLabels[stage.key]}
+                                                    </p>
+                                                </div>
+                                                <Badge
+                                                    variant={stageStatusVariant(stage.status)}
+                                                    className="capitalize"
+                                                >
+                                                    {stage.status}
+                                                </Badge>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
                                 <div className="mt-4 flex flex-col gap-3 rounded-lg border border-border bg-muted/40 p-3">
                                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

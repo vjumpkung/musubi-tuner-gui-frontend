@@ -1,9 +1,18 @@
+import { Badge } from '@/components/ui/badge'
+import {
+    Card as CreditCard,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle
+} from '@/components/ui/card'
 import { Card, CardBody, Typography } from '@/components/ui/legacy'
 import {
     RefreshCcwIcon as ArrowPathRoundedSquareIcon,
     BadgeCheckIcon as CheckBadgeIcon,
     SquareTerminalIcon as CommandLineIcon,
     FolderDownIcon as FolderArrowDownIcon,
+    GitForkIcon,
     HeartIcon,
     ShieldCheckIcon,
     SparklesIcon
@@ -139,6 +148,30 @@ const About = () => (
                     </p>
                 </CardBody>
             </Card>
+        </section>
+
+        <section className="mt-10" aria-labelledby="credits-heading">
+            <CreditCard>
+                <CardHeader>
+                    <CardTitle id="credits-heading">Credits</CardTitle>
+                    <CardDescription className="max-w-3xl leading-6">
+                        Musubi Tuner GUI is built around the open-source musubi-tuner training
+                        toolkit created and maintained by kohya-ss.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <Badge asChild variant="outline">
+                        <a
+                            href="https://github.com/kohya-ss/musubi-tuner"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
+                            <GitForkIcon data-icon="inline-start" />
+                            kohya-ss/musubi-tuner
+                        </a>
+                    </Badge>
+                </CardContent>
+            </CreditCard>
         </section>
 
         <footer className="mt-10 flex flex-col gap-3 border-t border-border pt-7 sm:flex-row sm:items-center sm:justify-between">
