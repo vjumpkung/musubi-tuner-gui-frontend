@@ -17,6 +17,7 @@ export type TrainingField = {
 export type TrainingOption = {
     label: string
     value: string
+    relatedValues?: TrainingValues
 }
 
 export type TrainingSelect = {
@@ -570,11 +571,44 @@ export const trainingProfiles: Record<TrainingProfile['id'], TrainingProfile> = 
                 helper: 'The checkpoint and text encoder must match this FLUX.2 variant.',
                 trainFlag: '--model_version',
                 options: [
-                    { label: 'Dev', value: 'dev' },
-                    { label: 'Klein 4B', value: 'klein-4b' },
-                    { label: 'Klein Base 4B', value: 'klein-base-4b' },
-                    { label: 'Klein 9B', value: 'klein-9b' },
-                    { label: 'Klein Base 9B', value: 'klein-base-9b' }
+                    {
+                        label: 'Dev',
+                        value: 'dev',
+                        relatedValues: {
+                            dit: './diffusion_models/flux2_dev_fp8mixed.safetensors',
+                            vae: './vae/flux2-vae.safetensors',
+                            textEncoder: './text_encoders/mistral_3_small_flux2_bf16.safetensors',
+                            fp8Base: true,
+                            fp8Scaled: true,
+                            fp8TextEncoder: false
+                        }
+                    },
+                    {
+                        label: 'Klein Base 4B',
+                        value: 'klein-base-4b',
+                        relatedValues: {
+                            dit: './diffusion_models/flux-2-klein-base-4b.safetensors',
+                            vae: './vae/ae.safetensors',
+                            textEncoder:
+                                './text_encoders/qwen3_4b/model-00001-of-00002.safetensors',
+                            fp8Base: false,
+                            fp8Scaled: false,
+                            fp8TextEncoder: false
+                        }
+                    },
+                    {
+                        label: 'Klein Base 9B',
+                        value: 'klein-base-9b',
+                        relatedValues: {
+                            dit: './diffusion_models/flux-2-klein-base-9b.safetensors',
+                            vae: './vae/ae.safetensors',
+                            textEncoder:
+                                './text_encoders/qwen3_8b/model-00001-of-00004.safetensors',
+                            fp8Base: false,
+                            fp8Scaled: false,
+                            fp8TextEncoder: false
+                        }
+                    }
                 ]
             }
         ],

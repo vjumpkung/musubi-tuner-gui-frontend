@@ -56,7 +56,7 @@ const DownloadRow = ({
     const downloadStatus = job?.message || job?.current_file
 
     return (
-        <article className="[content-visibility:auto]">
+        <article>
             <Card className="border border-border shadow-sm">
                 <CardBody className="flex flex-col gap-5 p-5 sm:p-6 xl:flex-row xl:items-start xl:justify-between">
                     <div className="min-w-0 flex-1">

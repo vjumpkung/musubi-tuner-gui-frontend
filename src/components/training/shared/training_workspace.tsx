@@ -8,9 +8,21 @@ import useMenuBar, { Menu } from '../../../hooks/useMenubar'
 import {
     type TrainingField,
     type TrainingProfile,
+    type TrainingSelect,
     type TrainingValue,
     type TrainingValues
 } from '../profiles'
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger
+} from '@/components/ui/alert-dialog'
 import {
     Accordion,
     AccordionBody,
@@ -405,6 +417,30 @@ const defaultTrainingDraft = (profile: TrainingProfile): TrainingDraft => ({
     openPublishing: false
 })
 
+const normalizeSelectorValues = (
+    profile: TrainingProfile,
+    values: TrainingValues
+): TrainingValues => {
+    let normalizedValues = values
+
+    for (const selector of profile.selectors ?? []) {
+        const selectedValue = String(normalizedValues[selector.key] ?? '')
+        if (selector.options.some((option) => option.value === selectedValue)) continue
+
+        const fallbackValue = String(
+            profile.defaults[selector.key] ?? selector.options[0]?.value ?? ''
+        )
+        const fallbackOption = selector.options.find((option) => option.value === fallbackValue)
+        normalizedValues = {
+            ...normalizedValues,
+            [selector.key]: fallbackValue,
+            ...(fallbackOption?.relatedValues ?? {})
+        }
+    }
+
+    return normalizedValues
+}
+
 const readTrainingDraft = (profile: TrainingProfile): TrainingDraft => {
     const fallback = defaultTrainingDraft(profile)
 
@@ -428,7 +464,7 @@ const readTrainingDraft = (profile: TrainingProfile): TrainingDraft => {
 
         return {
             version: trainingDraftVersion,
-            values: { ...profile.defaults, ...storedValues },
+            values: normalizeSelectorValues(profile, { ...profile.defaults, ...storedValues }),
             selectedDatasetId:
                 typeof parsed.selectedDatasetId === 'string' ? parsed.selectedDatasetId : '',
             skipCacheStages:
@@ -536,6 +572,15 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
         setValues((current) => ({ ...current, [key]: value }))
     }
 
+    const setSelectorValue = (field: TrainingSelect, nextValue: string) => {
+        const selectedOption = field.options.find((option) => option.value === nextValue)
+        setValues((current) => ({
+            ...current,
+            [field.key]: nextValue,
+            ...(selectedOption?.relatedValues ?? {})
+        }))
+    }
+
     const value = (key: string) => String(values[key] ?? '')
     const enabled = (key: string) => values[key] === true
     const hasDefault = (key: string) => Boolean(profile.defaults[key])
@@ -639,7 +684,7 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
                 Object.entries(parsed.values).filter(([key]) => allowedKeys.has(key))
             ) as TrainingValues
 
-            setValues({ ...profile.defaults, ...importedValues })
+            setValues(normalizeSelectorValues(profile, { ...profile.defaults, ...importedValues }))
             if (
                 typeof parsed.datasetConfigId === 'string' &&
                 datasets.some((dataset) => dataset.id === parsed.datasetConfigId)
@@ -740,16 +785,40 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
                             <ArrowDownTrayIcon className="h-5 w-5" />
                             Export config
                         </Button>
-                        <Button
-                            type="button"
-                            variant="outlined"
-                            color="blue-gray"
-                            className="flex min-h-11 items-center justify-center gap-2 px-4 py-3"
-                            onClick={resetDefaults}
-                        >
-                            <AdjustmentsHorizontalIcon className="h-5 w-5" />
-                            Restore defaults
-                        </Button>
+                        <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                                <Button
+                                    type="button"
+                                    variant="outlined"
+                                    color="blue-gray"
+                                    className="flex min-h-11 items-center justify-center gap-2 px-4 py-3"
+                                >
+                                    <AdjustmentsHorizontalIcon className="h-5 w-5" />
+                                    Restore defaults
+                                </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                    <AlertDialogTitle>
+                                        Restore default training values?
+                                    </AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                        All current {profile.name} training values will be replaced.
+                                        Your selected dataset and shared acceleration settings will
+                                        not change.
+                                    </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction
+                                        variant="destructive"
+                                        onClick={resetDefaults}
+                                    >
+                                        Restore defaults
+                                    </AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
                     </div>
                 </div>
                 <p
@@ -902,7 +971,7 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
                                     size="lg"
                                     label={field.label}
                                     value={value(field.key)}
-                                    onChange={(next) => setValue(field.key, next ?? '')}
+                                    onChange={(next) => setSelectorValue(field, next ?? '')}
                                 >
                                     {field.options.map((option) => (
                                         <Option key={option.value} value={option.value}>
