@@ -772,7 +772,7 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
                             className="flex min-h-11 items-center justify-center gap-2 px-4 py-3"
                             onClick={() => importInputRef.current?.click()}
                         >
-                            <ArrowUpTrayIcon className="h-5 w-5" />
+                            <ArrowDownTrayIcon className="h-5 w-5" />
                             Import config
                         </Button>
                         <Button
@@ -782,7 +782,7 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
                             className="flex min-h-11 items-center justify-center gap-2 px-4 py-3"
                             onClick={exportConfig}
                         >
-                            <ArrowDownTrayIcon className="h-5 w-5" />
+                            <ArrowUpTrayIcon className="h-5 w-5" />
                             Export config
                         </Button>
                         <AlertDialog>
