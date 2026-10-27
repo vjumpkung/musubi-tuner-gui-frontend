@@ -10,7 +10,8 @@ import {
     type TrainingProfile,
     type TrainingSelect,
     type TrainingValue,
-    type TrainingValues
+    type TrainingValues,
+    matchesWhen
 } from '../profiles'
 import {
     AlertDialog,
@@ -54,7 +55,15 @@ import {
     InfoIcon as InformationCircleIcon,
     RocketIcon as RocketLaunchIcon
 } from 'lucide-react'
-import { type ChangeEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+import {
+    type ChangeEvent,
+    type ReactNode,
+    useEffect,
+    useId,
+    useMemo,
+    useRef,
+    useState
+} from 'react'
 
 const schedulerOptions = [
     'constant',
@@ -96,8 +105,7 @@ const buildCommands = (
         value(key) ? [flag, shellQuote(value(key))] : []
     const script = (filename: string) =>
         `python ${shellQuote(`${value('musubiPath').replace(/\/$/, '')}/${filename}`)}`
-    const matches = (when?: { key: string; value: TrainingValue }) =>
-        !when || values[when.key] === when.value
+    const matches = (when?: TrainingField['when']) => matchesWhen(values, when)
     const commandOption = ({
         flag,
         key,
@@ -212,6 +220,7 @@ const buildCommands = (
         ...trainFields.flatMap((field) =>
             field.trainFlag && matches(field.when) ? argument(field.trainFlag, field.key) : []
         ),
+        ...(profile.trainOptions ?? []).flatMap(commandOption),
         '--network_module',
         profile.networkModule,
         ...argument('--optimizer_type', 'optimizer'),
@@ -295,7 +304,7 @@ const SectionCard = ({ number, title, description, icon, children }: SectionCard
                     <p className="text-xs font-semibold uppercase tracking-wide text-primary">
                         Section {number}
                     </p>
-                    <Typography variant="h5" color="blue-gray">
+                    <Typography as="h2" variant="h5" color="blue-gray">
                         {title}
                     </Typography>
                     <p className="mt-1 text-sm leading-6 text-muted-foreground">{description}</p>
@@ -314,12 +323,20 @@ type TextFieldProps = {
 }
 
 const TextField = ({ field, value, type = 'text', onChange }: TextFieldProps) => {
+    const inputId = useId()
+    const helperId = `${inputId}-helper`
     const [touched, setTouched] = useState(false)
     const showError = Boolean(field.required && touched && !value.trim())
 
     return (
         <div className="min-w-0">
             <Input
+                id={inputId}
+                name={field.key}
+                autoComplete="off"
+                spellCheck={false}
+                aria-required={field.required || undefined}
+                aria-describedby={helperId}
                 size="lg"
                 type={type}
                 containerProps={inputContainerProps}
@@ -330,6 +347,8 @@ const TextField = ({ field, value, type = 'text', onChange }: TextFieldProps) =>
                 onChange={(event) => onChange(event.target.value)}
             />
             <p
+                id={helperId}
+                aria-live="polite"
                 className={cn(
                     'mt-2 text-xs leading-5',
                     showError ? 'text-destructive' : 'text-muted-foreground'
@@ -350,21 +369,33 @@ type NumberFieldProps = {
     onChange: (value: string) => void
 }
 
-const NumberField = ({ label, value, helper, min, step, onChange }: NumberFieldProps) => (
-    <div className="min-w-0">
-        <Input
-            type="number"
-            size="lg"
-            containerProps={inputContainerProps}
-            label={label}
-            value={value}
-            min={min}
-            step={step}
-            onChange={(event) => onChange(event.target.value)}
-        />
-        {helper ? <p className="mt-2 text-xs leading-5 text-muted-foreground">{helper}</p> : null}
-    </div>
-)
+const NumberField = ({ label, value, helper, min, step, onChange }: NumberFieldProps) => {
+    const inputId = useId()
+    const helperId = `${inputId}-helper`
+
+    return (
+        <div className="min-w-0">
+            <Input
+                id={inputId}
+                name={label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}
+                aria-describedby={helper ? helperId : undefined}
+                type="number"
+                size="lg"
+                containerProps={inputContainerProps}
+                label={label}
+                value={value}
+                min={min}
+                step={step}
+                onChange={(event) => onChange(event.target.value)}
+            />
+            {helper ? (
+                <p id={helperId} className="mt-2 text-xs leading-5 text-muted-foreground">
+                    {helper}
+                </p>
+            ) : null}
+        </div>
+    )
+}
 
 type TrainingWorkspaceProps = {
     profile: TrainingProfile
@@ -479,6 +510,8 @@ const readTrainingDraft = (profile: TrainingProfile): TrainingDraft => {
 }
 
 const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
+    const advancedPanelId = useId()
+    const publishingPanelId = useId()
     const queryClient = useQueryClient()
     const setMenuBar = useMenuBar((state) => state.setMenuBar)
     const initialDraft = useMemo(() => readTrainingDraft(profile), [profile])
@@ -584,8 +617,7 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
     const value = (key: string) => String(values[key] ?? '')
     const enabled = (key: string) => values[key] === true
     const hasDefault = (key: string) => Boolean(profile.defaults[key])
-    const fieldIsVisible = (field: TrainingField) =>
-        !field.when || values[field.when.key] === field.when.value
+    const fieldIsVisible = (field: TrainingField) => matchesWhen(values, field.when)
     const requiredFields = [
         { key: 'musubiPath', label: 'Musubi Tuner directory' },
         { key: 'outputName', label: 'Output name' },
@@ -598,8 +630,14 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
         ...requiredFields.filter((field) => !value(field.key).trim()),
         ...(!effectiveDatasetId ? [{ key: 'datasetConfig', label: 'Dataset config' }] : [])
     ]
-    const completion = Math.round(
-        ((requiredFields.length - missingFields.length) / requiredFields.length) * 100
+    const completion = Math.max(
+        0,
+        Math.min(
+            100,
+            Math.round(
+                ((requiredFields.length - missingFields.length) / requiredFields.length) * 100
+            )
+        )
     )
     const command = useMemo(
         () => buildCommands(profile, values, accelerationSettings),
@@ -722,16 +760,28 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
     const integrationError = importDatasetMutation.error
         ? getApiErrorMessage(
               importDatasetMutation.error,
-              'The dataset config could not be imported.'
+              'The dataset config could not be imported. Check the TOML file and try again.'
           )
         : createJobMutation.error
-          ? getApiErrorMessage(createJobMutation.error, 'The training job could not be created.')
+          ? getApiErrorMessage(
+                createJobMutation.error,
+                'The training job could not be created. Check that the backend is available and try again.'
+            )
           : queueMutation.error
-            ? getApiErrorMessage(queueMutation.error, 'The queue state could not be changed.')
+            ? getApiErrorMessage(
+                  queueMutation.error,
+                  'The queue state could not be changed. Check that the backend is available and try again.'
+              )
             : datasetsQuery.error
-              ? getApiErrorMessage(datasetsQuery.error, 'Dataset configs could not be loaded.')
+              ? getApiErrorMessage(
+                    datasetsQuery.error,
+                    'Dataset configs could not be loaded. Check that the backend is available and try again.'
+                )
               : queueQuery.error
-                ? getApiErrorMessage(queueQuery.error, 'The training queue could not be loaded.')
+                ? getApiErrorMessage(
+                      queueQuery.error,
+                      'The training queue could not be loaded. Check that the backend is available and try again.'
+                  )
                 : undefined
 
     return (
@@ -740,13 +790,15 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
                 <div className="flex flex-col gap-5">
                     <div className="max-w-3xl">
                         <div className="mb-3 flex flex-wrap items-center gap-2 text-xs font-semibold">
-                            <span className="rounded-full bg-accent px-3 py-1.5 text-primary">
+                            <span className="rounded-full bg-accent px-3 py-1.5 text-accent-foreground">
                                 LoRA training
                             </span>
-                            <span className="rounded-full bg-muted px-3 py-1.5 font-mono text-muted-foreground">
-                                {profile.script}
-                            </span>
-                            <span className="rounded-full bg-accent px-3 py-1.5 uppercase text-primary">
+                            {profile.script ? (
+                                <span className="rounded-full bg-muted px-3 py-1.5 font-mono text-muted-foreground">
+                                    {profile.script}
+                                </span>
+                            ) : null}
+                            <span className="rounded-full bg-accent px-3 py-1.5 uppercase text-accent-foreground">
                                 {value('mixedPrecision')}
                             </span>
                         </div>
@@ -895,6 +947,7 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
                                         size="sm"
                                         variant="text"
                                         color="blue"
+                                        loading={importDatasetMutation.isPending}
                                         disabled={importDatasetMutation.isPending}
                                         className="shrink-0 px-2 py-1"
                                         onClick={() => datasetImportInputRef.current?.click()}
@@ -1229,24 +1282,33 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
 
                     <Card className="border border-border shadow-sm">
                         <Accordion open={openAdvanced}>
-                            <AccordionHeader
-                                onClick={() => setOpenAdvanced((current) => !current)}
-                                className="border-b-0 px-5 py-5 sm:px-6"
-                            >
-                                <div className="flex items-center gap-3 text-left">
-                                    <CodeBracketIcon className="h-6 w-6 text-muted-foreground" />
-                                    <div>
-                                        <Typography variant="h5" color="blue-gray">
-                                            Advanced scheduling
-                                        </Typography>
-                                        <p className="mt-1 text-sm font-normal text-muted-foreground">
-                                            Noise schedule, seed, scheduler internals, and raw
-                                            arguments.
-                                        </p>
-                                    </div>
-                                </div>
-                            </AccordionHeader>
-                            <AccordionBody className="px-5 pb-6 pt-4 sm:px-6">
+                            <h2>
+                                <AccordionHeader
+                                    aria-expanded={openAdvanced}
+                                    aria-controls={advancedPanelId}
+                                    onClick={() => setOpenAdvanced((current) => !current)}
+                                    className="border-b-0 px-5 py-5 sm:px-6"
+                                >
+                                    <span className="flex items-center gap-3 text-left">
+                                        <CodeBracketIcon className="h-6 w-6 text-muted-foreground" />
+                                        <span>
+                                            <Typography
+                                                as="span"
+                                                variant="h5"
+                                                color="blue-gray"
+                                                className="block"
+                                            >
+                                                Advanced scheduling
+                                            </Typography>
+                                            <span className="mt-1 block text-sm font-normal text-muted-foreground">
+                                                Noise schedule, seed, scheduler internals, and raw
+                                                arguments.
+                                            </span>
+                                        </span>
+                                    </span>
+                                </AccordionHeader>
+                            </h2>
+                            <AccordionBody id={advancedPanelId} className="px-5 pb-6 pt-4 sm:px-6">
                                 <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
                                     <TextField
                                         field={{
@@ -1329,14 +1391,16 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
                                             onChange={(next) => setValue('maxTimestep', next)}
                                         />
                                     ) : null}
-                                    {profile.advancedFields?.map((field) => (
-                                        <TextField
-                                            key={field.key}
-                                            field={field}
-                                            value={value(field.key)}
-                                            onChange={(next) => setValue(field.key, next)}
-                                        />
-                                    ))}
+                                    {profile.advancedFields?.map((field) =>
+                                        fieldIsVisible(field) ? (
+                                            <TextField
+                                                key={field.key}
+                                                field={field}
+                                                value={value(field.key)}
+                                                onChange={(next) => setValue(field.key, next)}
+                                            />
+                                        ) : null
+                                    )}
                                 </div>
                                 <div className="mt-5">
                                     <TextField
@@ -1355,23 +1419,35 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
 
                     <Card className="border border-border shadow-sm">
                         <Accordion open={openPublishing}>
-                            <AccordionHeader
-                                onClick={() => setOpenPublishing((current) => !current)}
-                                className="border-b-0 px-5 py-5 sm:px-6"
+                            <h2>
+                                <AccordionHeader
+                                    aria-expanded={openPublishing}
+                                    aria-controls={publishingPanelId}
+                                    onClick={() => setOpenPublishing((current) => !current)}
+                                    className="border-b-0 px-5 py-5 sm:px-6"
+                                >
+                                    <span className="flex items-center gap-3 text-left">
+                                        <CloudArrowUpIcon className="h-6 w-6 text-muted-foreground" />
+                                        <span>
+                                            <Typography
+                                                as="span"
+                                                variant="h5"
+                                                color="blue-gray"
+                                                className="block"
+                                            >
+                                                Optional Hugging Face upload
+                                            </Typography>
+                                            <span className="mt-1 block text-sm font-normal text-muted-foreground">
+                                                Keep collapsed when training locally only.
+                                            </span>
+                                        </span>
+                                    </span>
+                                </AccordionHeader>
+                            </h2>
+                            <AccordionBody
+                                id={publishingPanelId}
+                                className="px-5 pb-6 pt-4 sm:px-6"
                             >
-                                <div className="flex items-center gap-3 text-left">
-                                    <CloudArrowUpIcon className="h-6 w-6 text-muted-foreground" />
-                                    <div>
-                                        <Typography variant="h5" color="blue-gray">
-                                            Optional Hugging Face upload
-                                        </Typography>
-                                        <p className="mt-1 text-sm font-normal text-muted-foreground">
-                                            Keep collapsed when training locally only.
-                                        </p>
-                                    </div>
-                                </div>
-                            </AccordionHeader>
-                            <AccordionBody className="px-5 pb-6 pt-4 sm:px-6">
                                 <div className="grid gap-5 md:grid-cols-2">
                                     <TextField
                                         field={{
@@ -1449,7 +1525,7 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
                         <CardBody className="p-5">
                             <div className="flex items-center gap-3">
                                 <CircleStackIcon className="h-6 w-6 text-primary" />
-                                <Typography variant="h5" color="blue-gray">
+                                <Typography as="h2" variant="h5" color="blue-gray">
                                     Training readiness
                                 </Typography>
                             </div>
@@ -1457,7 +1533,12 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
                                 <span className="font-medium text-foreground">Required setup</span>
                                 <span className="font-semibold text-primary">{completion}%</span>
                             </div>
-                            <Progress value={completion} color="blue" className="mt-2" />
+                            <Progress
+                                value={completion}
+                                color="blue"
+                                className="mt-2"
+                                aria-label="Required training setup completion"
+                            />
 
                             {missingFields.length ? (
                                 <div className="mt-4 rounded-lg border border-warning-border bg-warning-muted p-3 text-sm text-warning-foreground">
@@ -1496,13 +1577,18 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
                                     size="sm"
                                     variant="outlined"
                                     color="blue-gray"
+                                    loading={queueMutation.isPending}
                                     disabled={queueMutation.isPending || !queueQuery.data}
                                     className="mt-3 w-full"
                                     onClick={() => queueMutation.mutate()}
                                 >
-                                    {queueQuery.data?.state === 'running'
-                                        ? 'Pause queue'
-                                        : 'Start queue'}
+                                    {queueMutation.isPending
+                                        ? queueQuery.data?.state === 'running'
+                                            ? 'Pausing…'
+                                            : 'Starting…'
+                                        : queueQuery.data?.state === 'running'
+                                          ? 'Pause queue'
+                                          : 'Start queue'}
                                 </Button>
                             </div>
 
@@ -1553,11 +1639,14 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
                                 type="button"
                                 color="blue"
                                 size="lg"
+                                loading={createJobMutation.isPending}
                                 disabled={missingFields.length > 0 || createJobMutation.isPending}
                                 className="mt-5 flex min-h-12 w-full items-center justify-center gap-2 px-5 py-3"
                                 onClick={() => createJobMutation.mutate()}
                             >
-                                <RocketLaunchIcon className="h-5 w-5" />
+                                {createJobMutation.isPending ? null : (
+                                    <RocketLaunchIcon className="h-5 w-5" />
+                                )}
                                 {createJobMutation.isPending
                                     ? 'Adding job…'
                                     : 'Add to training queue'}

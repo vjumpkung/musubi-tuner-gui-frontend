@@ -8,7 +8,7 @@ import { type TrainingProfile, trainingProfiles } from './components/training/pr
 import TrainingWorkspace from './components/training/shared/training_workspace'
 import useMenuBar, { Menu } from './hooks/useMenubar'
 import { cn } from '@/lib/utils'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 const trainingProfileByMenu: Partial<Record<Menu, TrainingProfile['id']>> = {
     [Menu.HV_TRAINER]: 'hunyuan-video',
@@ -24,23 +24,53 @@ const trainingProfileByMenu: Partial<Record<Menu, TrainingProfile['id']>> = {
     [Menu.HIDREAM_TRAINER]: 'hidream-o1',
     [Menu.IDEOGRAM_TRAINER]: 'ideogram-4',
     [Menu.KANDINSKY_TRAINER]: 'kandinsky-5',
-    [Menu.KREA_TRAINER]: 'krea-2'
+    [Menu.KREA_TRAINER]: 'krea-2',
+    [Menu.MINIMAX_H3_TRAINER]: 'minimax-h3'
 }
 
 export default function App() {
     const menu = useMenuBar((state) => state.menu)
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+    const mainContentRef = useRef<HTMLDivElement>(null)
+    const previousMenuRef = useRef(menu)
+    const navigationDeferredRef = useRef(false)
     const trainingProfileId = trainingProfileByMenu[menu]
     const trainingProfile = trainingProfileId ? trainingProfiles[trainingProfileId] : null
 
+    useEffect(() => {
+        if (previousMenuRef.current === menu) return
+
+        previousMenuRef.current = menu
+        if (!navigationDeferredRef.current) mainContentRef.current?.focus()
+    }, [menu])
+
     return (
         <div className="min-h-screen">
+            <a
+                href="#main-content"
+                className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[60] focus:rounded-lg focus:bg-card focus:px-4 focus:py-2 focus:text-foreground focus:ring-2 focus:ring-ring"
+            >
+                Skip to main content
+            </a>
             <SideBar
                 collapsed={sidebarCollapsed}
                 onToggleCollapsed={() => setSidebarCollapsed((current) => !current)}
+                onNavigationStart={() => {
+                    navigationDeferredRef.current = true
+                }}
+                onNavigationComplete={() => {
+                    navigationDeferredRef.current = false
+                    mainContentRef.current?.focus()
+                }}
             />
             <div
-                className={cn('transition-[margin] duration-200', !sidebarCollapsed && 'lg:ml-80')}
+                id="main-content"
+                tabIndex={-1}
+                ref={mainContentRef}
+                className={cn(
+                    'transition-[margin] duration-200 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring motion-reduce:transition-none',
+                    !sidebarCollapsed && 'lg:ml-80'
+                )}
             >
                 {trainingProfile ? (
                     <TrainingWorkspace key={trainingProfile.id} profile={trainingProfile} />

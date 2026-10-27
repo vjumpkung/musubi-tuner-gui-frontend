@@ -22,7 +22,8 @@ import {
     type HTMLAttributes,
     type InputHTMLAttributes,
     type ReactNode,
-    type TextareaHTMLAttributes
+    type TextareaHTMLAttributes,
+    useId
 } from 'react'
 
 type LegacyColor = 'amber' | 'blue' | 'blue-gray' | 'green' | 'indigo' | 'red' | 'white'
@@ -171,8 +172,8 @@ function Input({
     size: _size,
     ...props
 }: InputProps) {
-    const inputId =
-        id ?? (label ? `field-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}` : undefined)
+    const generatedId = useId()
+    const inputId = id ?? generatedId
 
     return (
         <Field className={containerProps?.className} data-invalid={error || undefined}>
@@ -201,8 +202,8 @@ type TextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement> & {
 }
 
 function Textarea({ className, error, id, label, size: _size, ...props }: TextareaProps) {
-    const textareaId =
-        id ?? (label ? `field-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}` : undefined)
+    const generatedId = useId()
+    const textareaId = id ?? generatedId
 
     return (
         <Field data-invalid={error || undefined}>
@@ -228,11 +229,13 @@ type SelectProps = {
 }
 
 function Select({ children, className, disabled, label, onChange, value }: SelectProps) {
+    const triggerId = useId()
+
     return (
         <Field>
-            {label ? <FieldLabel>{label}</FieldLabel> : null}
+            {label ? <FieldLabel htmlFor={triggerId}>{label}</FieldLabel> : null}
             <ShadcnSelect disabled={disabled} onValueChange={onChange} value={value || undefined}>
-                <SelectTrigger className={cn('h-10 w-full', className)}>
+                <SelectTrigger id={triggerId} className={cn('h-10 w-full', className)}>
                     <SelectValue placeholder={label ?? 'Select an option'} />
                 </SelectTrigger>
                 <SelectContent position="popper">
@@ -263,11 +266,8 @@ function Checkbox({
     onChange,
     ...props
 }: CheckboxProps) {
-    const checkboxId =
-        id ??
-        (typeof label === 'string'
-            ? `check-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`
-            : undefined)
+    const generatedId = useId()
+    const checkboxId = id ?? generatedId
 
     return (
         <Field className={containerProps?.className} orientation="horizontal">
@@ -339,13 +339,12 @@ function ListItem({
     className,
     selected: _selected,
     ...props
-}: HTMLAttributes<HTMLDivElement> & { selected?: boolean }) {
+}: React.ComponentProps<'button'> & { selected?: boolean }) {
     return (
-        <div
-            role="button"
-            tabIndex={0}
+        <button
+            type="button"
             className={cn(
-                'hover:bg-accent focus-visible:border-ring focus-visible:ring-ring/50 flex min-h-9 items-center gap-2 rounded-lg px-3 py-2 text-sm outline-none focus-visible:ring-3',
+                'hover:bg-accent focus-visible:border-ring focus-visible:ring-ring/50 flex min-h-9 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm outline-none focus-visible:ring-3',
                 className
             )}
             {...props}

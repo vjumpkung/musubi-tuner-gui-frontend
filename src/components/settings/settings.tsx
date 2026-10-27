@@ -61,7 +61,7 @@ const Settings = () => {
                                     <KeyIcon className="h-6 w-6" />
                                 </div>
                                 <div>
-                                    <Typography variant="h5" color="blue-gray">
+                                    <Typography as="h2" variant="h5" color="blue-gray">
                                         Hugging Face authentication
                                     </Typography>
                                     <p className="mt-1 text-sm leading-6 text-muted-foreground">
@@ -106,7 +106,7 @@ const Settings = () => {
                                     <CpuChipIcon className="h-6 w-6" />
                                 </div>
                                 <div>
-                                    <Typography variant="h5" color="blue-gray">
+                                    <Typography as="h2" variant="h5" color="blue-gray">
                                         Torch compilation
                                     </Typography>
                                     <p className="mt-1 text-sm leading-6 text-muted-foreground">
@@ -162,7 +162,7 @@ const Settings = () => {
                                     <ServerStackIcon className="h-6 w-6" />
                                 </div>
                                 <div>
-                                    <Typography variant="h5" color="blue-gray">
+                                    <Typography as="h2" variant="h5" color="blue-gray">
                                         Process topology
                                     </Typography>
                                     <p className="mt-1 text-sm leading-6 text-muted-foreground">
@@ -233,7 +233,7 @@ const Settings = () => {
                         <CardBody className="p-5">
                             <div className="flex items-center gap-3">
                                 <InformationCircleIcon className="h-6 w-6 text-primary" />
-                                <Typography variant="h5" color="blue-gray">
+                                <Typography as="h2" variant="h5" color="blue-gray">
                                     Current launch
                                 </Typography>
                             </div>
@@ -269,7 +269,7 @@ const Settings = () => {
                                     </dd>
                                 </div>
                             </dl>
-                            <p className="mt-5 rounded-lg bg-accent p-3 text-xs leading-5 text-primary">
+                            <p className="mt-5 rounded-lg bg-accent p-3 text-xs leading-5 text-accent-foreground">
                                 Acceleration changes are saved automatically in this browser. Model
                                 and save precision stay on each training page.
                             </p>

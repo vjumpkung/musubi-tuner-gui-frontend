@@ -41,31 +41,29 @@ const workflow = [
 
 const About = () => (
     <main className="mx-auto w-full max-w-6xl p-3 pb-12 sm:p-5 sm:pb-12">
-        <header className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary via-primary/90 to-primary px-6 py-10 text-primary-foreground shadow-lg sm:px-10 sm:py-14">
-            <div className="absolute -right-24 -top-28 h-80 w-80 rounded-full bg-primary-foreground/10 blur-3xl" />
-            <div className="absolute -bottom-32 left-1/3 h-72 w-72 rounded-full bg-primary-foreground/10 blur-3xl" />
+        <header className="relative overflow-hidden rounded-2xl bg-primary px-6 py-10 text-primary-foreground shadow-lg sm:px-10 sm:py-14">
             <div className="relative grid items-center gap-8 md:grid-cols-[minmax(0,1fr)_12rem]">
                 <div className="max-w-3xl">
-                    <p className="mb-4 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-primary-foreground/80">
+                    <p className="mb-4 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-primary-foreground">
                         <HeartIcon className="h-4 w-4" />
                         Created by PixelLatent
                     </p>
                     <Typography variant="h1" color="white" className="max-w-2xl">
                         Complex model training, made easier to reason about.
                     </Typography>
-                    <p className="mt-5 max-w-2xl text-base leading-7 text-primary-foreground/90 sm:text-lg">
+                    <p className="mt-5 max-w-2xl text-base leading-7 text-primary-foreground sm:text-lg">
                         Musubi Tuner GUI brings trainer configuration, model downloads, launch
                         settings, and logs into one focused workspace—so you can spend less time
                         assembling commands and more time shaping the result.
                     </p>
                     <div className="mt-7 flex flex-wrap gap-2 text-xs font-semibold">
-                        <span className="rounded-full bg-primary-foreground/10 px-3 py-1.5 ring-1 ring-primary-foreground/20">
+                        <span className="rounded-full px-3 py-1.5 ring-1 ring-primary-foreground/20">
                             Configure
                         </span>
-                        <span className="rounded-full bg-primary-foreground/10 px-3 py-1.5 ring-1 ring-primary-foreground/20">
+                        <span className="rounded-full px-3 py-1.5 ring-1 ring-primary-foreground/20">
                             Review
                         </span>
-                        <span className="rounded-full bg-primary-foreground/10 px-3 py-1.5 ring-1 ring-primary-foreground/20">
+                        <span className="rounded-full px-3 py-1.5 ring-1 ring-primary-foreground/20">
                             Repeat
                         </span>
                     </div>
@@ -102,7 +100,7 @@ const About = () => (
                             <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-accent text-primary">
                                 {item.icon}
                             </div>
-                            <Typography variant="h5" color="blue-gray" className="mt-5">
+                            <Typography as="h3" variant="h5" color="blue-gray" className="mt-5">
                                 {item.title}
                             </Typography>
                             <p className="mt-2 text-sm leading-6 text-muted-foreground">
@@ -119,7 +117,7 @@ const About = () => (
                 <CardBody className="p-6 sm:p-7">
                     <div className="flex items-center gap-3">
                         <ArrowPathRoundedSquareIcon className="h-7 w-7 text-primary" />
-                        <Typography variant="h4" color="blue-gray">
+                        <Typography as="h2" variant="h4" color="blue-gray">
                             Built for iteration
                         </Typography>
                     </div>
@@ -136,7 +134,7 @@ const About = () => (
                 <CardBody className="p-6 sm:p-7">
                     <div className="flex items-center gap-3">
                         <ShieldCheckIcon className="h-7 w-7 text-primary" />
-                        <Typography variant="h4" color="blue-gray">
+                        <Typography as="h2" variant="h4" color="blue-gray">
                             You stay in control
                         </Typography>
                     </div>
@@ -153,7 +151,9 @@ const About = () => (
         <section className="mt-10" aria-labelledby="credits-heading">
             <CreditCard>
                 <CardHeader>
-                    <CardTitle id="credits-heading">Credits</CardTitle>
+                    <CardTitle>
+                        <h2 id="credits-heading">Credits</h2>
+                    </CardTitle>
                     <CardDescription className="max-w-3xl leading-6">
                         Musubi Tuner GUI is built around the open-source musubi-tuner training
                         toolkit created and maintained by kohya-ss.
@@ -176,7 +176,7 @@ const About = () => (
 
         <footer className="mt-10 flex flex-col gap-3 border-t border-border pt-7 sm:flex-row sm:items-center sm:justify-between">
             <div>
-                <Typography variant="h5" color="blue-gray">
+                <Typography as="p" variant="h5" color="blue-gray">
                     Musubi Tuner GUI
                 </Typography>
                 <p className="mt-1 text-sm text-muted-foreground">

@@ -10,7 +10,7 @@ export type TrainingField = {
     trainFlag?: string
     when?: {
         key: string
-        value: TrainingValue
+        value: TrainingValue | TrainingValue[]
     }
 }
 
@@ -35,8 +35,15 @@ export type TrainingCommandOption = {
     enabledKey?: string
     when?: {
         key: string
-        value: TrainingValue
+        value: TrainingValue | TrainingValue[]
     }
+}
+
+export const matchesWhen = (values: TrainingValues, when?: TrainingField['when']) => {
+    if (!when) return true
+    const rawValue = values[when.key]
+    const value = typeof rawValue === 'string' ? rawValue.trim() : rawValue
+    return Array.isArray(when.value) ? when.value.includes(value) : value === when.value
 }
 
 export type TrainingCacheCommand = {
@@ -60,15 +67,17 @@ export type TrainingProfile = {
         | 'ideogram-4'
         | 'kandinsky-5'
         | 'krea-2'
+        | 'minimax-h3'
     name: string
     description: string
-    script: string
+    script?: string
     trainer: string
     networkModule: string
     modelFields: TrainingField[]
     selectors?: TrainingSelect[]
     advancedFields?: TrainingField[]
     cacheCommands?: TrainingCacheCommand[]
+    trainOptions?: TrainingCommandOption[]
     fixedTrainFlags?: string[]
     cpuThreads?: number
     task?: {
@@ -1551,6 +1560,401 @@ export const trainingProfiles: Record<TrainingProfile['id'], TrainingProfile> = 
             workers: '2',
             attention: 'sdpa',
             cacheBatchSize: '1'
+        }
+    },
+    'minimax-h3': {
+        id: 'minimax-h3',
+        name: 'MiniMax H3',
+        description:
+            'Train MiniMax H3 video+audio LoRAs (T2VA, FL2VA, Ref2VA) with guidance loss, a training adapter, or teacher matching.',
+        trainer: 'minimax_h3_train_network.py',
+        networkModule: 'networks.lora_minimax_h3',
+        cpuThreads: 1,
+        selectors: [
+            {
+                key: 'task',
+                label: 'Task',
+                helper: 'FL2VA base for T2VA/FL2VA, Ref2VA base for Ref2VA. Teacher matching always trains a T2VA student.',
+                options: [
+                    { label: 'Text to video+audio', value: 't2va' },
+                    { label: 'First/last frame to video+audio', value: 'fl2va' },
+                    { label: 'Reference to video+audio', value: 'ref2va' }
+                ]
+            },
+            {
+                key: 'lossMethod',
+                label: 'Loss method',
+                helper: 'H3 is CFG-distilled; pick exactly one loss method (plain flow training is not supported). The subject_ref recipe also uses learning rate 3e-4 and 50 warmup steps.',
+                options: [
+                    { label: 'Guidance loss', value: 'guidance' },
+                    { label: 'Training adapter (--base_weights)', value: 'adapter' },
+                    {
+                        label: 'Teacher: endpoints (first,last)',
+                        value: 'teacher-first-last',
+                        relatedValues: {
+                            task: 't2va',
+                            h3TeacherConditionSigmaMax: '0.75',
+                            h3TeacherConditionSigmaMin: '',
+                            h3TeacherLossDcWeight: '0.3',
+                            h3TeacherLossMagWeight: '',
+                            h3TimestepFocusProb: '0.5'
+                        }
+                    },
+                    {
+                        label: 'Teacher: reference clip (ref)',
+                        value: 'teacher-ref',
+                        relatedValues: {
+                            task: 't2va',
+                            h3TeacherConditionSigmaMax: '0.75',
+                            h3TeacherConditionSigmaMin: '',
+                            h3TeacherLossDcWeight: '0.3',
+                            h3TeacherLossMagWeight: '',
+                            h3TimestepFocusProb: '0.5'
+                        }
+                    },
+                    {
+                        label: 'Teacher: subject references (subject_ref)',
+                        value: 'teacher-subject-ref',
+                        relatedValues: {
+                            task: 't2va',
+                            h3TeacherConditionSigmaMax: '',
+                            h3TeacherConditionSigmaMin: '0.15',
+                            h3TeacherLossDcWeight: '0.3',
+                            h3TeacherLossMagWeight: '0.5',
+                            h3TimestepFocusProb: ''
+                        }
+                    }
+                ]
+            }
+        ],
+        cacheCommands: [
+            {
+                script: 'minimax_h3_cache_latents.py',
+                options: [
+                    { flag: '--dataset_config', key: 'datasetConfig' },
+                    {
+                        flag: '--task',
+                        key: 'task',
+                        when: { key: 'lossMethod', value: ['guidance', 'adapter'] }
+                    },
+                    {
+                        flag: '--task',
+                        value: 'fl2va',
+                        when: { key: 'lossMethod', value: 'teacher-first-last' }
+                    },
+                    {
+                        flag: '--task',
+                        value: 't2va',
+                        when: { key: 'lossMethod', value: 'teacher-ref' }
+                    },
+                    {
+                        flag: '--task',
+                        value: 'ref2va',
+                        when: { key: 'lossMethod', value: 'teacher-subject-ref' }
+                    },
+                    { flag: '--video_vae', key: 'videoVae' },
+                    { flag: '--audio_vae', key: 'audioVae' },
+                    { flag: '--cache_seed', key: 'cacheSeed' },
+                    { flag: '--one_frame', enabledKey: 'oneFrame' },
+                    { flag: '--skip_existing' }
+                ]
+            },
+            {
+                script: 'minimax_h3_cache_text_encoder_outputs.py',
+                options: [
+                    { flag: '--dataset_config', key: 'datasetConfig' },
+                    {
+                        flag: '--task',
+                        key: 'task',
+                        when: { key: 'lossMethod', value: ['guidance', 'adapter'] }
+                    },
+                    {
+                        flag: '--task',
+                        value: 't2va',
+                        when: {
+                            key: 'lossMethod',
+                            value: ['teacher-first-last', 'teacher-ref', 'teacher-subject-ref']
+                        }
+                    },
+                    { flag: '--text_encoder', key: 'textEncoder' },
+                    { flag: '--batch_size', key: 'cacheBatchSize' },
+                    { flag: '--one_frame', enabledKey: 'oneFrame' },
+                    {
+                        flag: '--uncond_output',
+                        key: 'guidanceUncondCache',
+                        when: { key: 'lossMethod', value: 'guidance' }
+                    },
+                    {
+                        flag: '--teacher_conditions',
+                        value: 'first,last',
+                        when: { key: 'lossMethod', value: 'teacher-first-last' }
+                    },
+                    {
+                        flag: '--teacher_conditions',
+                        value: 'ref',
+                        when: { key: 'lossMethod', value: 'teacher-ref' }
+                    },
+                    {
+                        flag: '--teacher_conditions',
+                        value: 'subject_ref',
+                        when: { key: 'lossMethod', value: 'teacher-subject-ref' }
+                    },
+                    { flag: '--text_encoder_blocks_to_swap', key: 'textEncoderBlocksToSwap' },
+                    { flag: '--text_encoder_attn_mode', key: 'textEncoderAttnMode' },
+                    { flag: '--skip_existing' }
+                ]
+            }
+        ],
+        trainOptions: [
+            {
+                flag: '--task',
+                key: 'task',
+                when: { key: 'lossMethod', value: ['guidance', 'adapter'] }
+            },
+            {
+                flag: '--task',
+                value: 't2va',
+                when: {
+                    key: 'lossMethod',
+                    value: ['teacher-first-last', 'teacher-ref', 'teacher-subject-ref']
+                }
+            },
+            {
+                flag: '--h3_teacher_matching',
+                when: {
+                    key: 'lossMethod',
+                    value: ['teacher-first-last', 'teacher-ref', 'teacher-subject-ref']
+                }
+            },
+            {
+                flag: '--h3_teacher_conditions',
+                value: 'first,last',
+                when: { key: 'lossMethod', value: 'teacher-first-last' }
+            },
+            {
+                flag: '--h3_teacher_conditions',
+                value: 'ref',
+                when: { key: 'lossMethod', value: 'teacher-ref' }
+            },
+            {
+                flag: '--h3_teacher_conditions',
+                value: 'subject_ref',
+                when: { key: 'lossMethod', value: 'teacher-subject-ref' }
+            }
+        ],
+        modelFields: [
+            {
+                key: 'dit',
+                label: 'MiniMax H3 transformer',
+                helper: 'FL2VA base for T2VA/FL2VA, Ref2VA base for Ref2VA. Adapter mode needs a BF16 file (use ConvRot INT8 option instead of an INT8 file).',
+                required: true,
+                trainFlag: '--dit'
+            },
+            {
+                key: 'videoVae',
+                label: 'Video VAE',
+                helper: 'Used when caching video latents.',
+                required: true
+            },
+            {
+                key: 'audioVae',
+                label: 'Audio VAE',
+                helper: 'Used when caching audio latents.',
+                required: true
+            },
+            {
+                key: 'textEncoder',
+                label: 'Qwen3-VL-32B H3 encoder',
+                helper: 'Used for text-encoder caching.',
+                required: true
+            },
+            {
+                key: 'baseWeights',
+                label: 'Training adapter',
+                helper: 'De-distillation adapter merged at load (e.g. ostris/minimax_h3_training_adapter or circlestone-labs/MiniMax-H3-Image-Training-Adapter). Needs a BF16 transformer.',
+                required: true,
+                trainFlag: '--base_weights',
+                when: { key: 'lossMethod', value: 'adapter' }
+            },
+            {
+                key: 'guidanceUncondCache',
+                label: 'Unconditional embedding cache',
+                helper: 'Written by text caching (--uncond_output) and read by training. Workspace-relative.',
+                required: true,
+                trainFlag: '--h3_guidance_loss_uncond_cache',
+                when: { key: 'lossMethod', value: 'guidance' }
+            }
+        ],
+        advancedFields: [
+            {
+                key: 'h3GuidanceLossScale',
+                label: 'Guidance loss scale',
+                helper: 'Recommended 3-4; 4 is more reliable for longer runs.',
+                trainFlag: '--h3_guidance_loss_scale',
+                when: { key: 'lossMethod', value: 'guidance' }
+            },
+            {
+                key: 'h3GuidanceLossSigmaMin',
+                label: 'Guidance loss minimum sigma',
+                helper: 'Skip the extra guidance forward below this base sigma; 0.15 recommended, 0 applies it always.',
+                trainFlag: '--h3_guidance_loss_sigma_min',
+                when: { key: 'lossMethod', value: 'guidance' }
+            },
+            {
+                key: 'h3GuidanceLossScaleAudio',
+                label: 'Audio guidance loss scale',
+                helper: 'Leave empty to use the main guidance scale.',
+                trainFlag: '--h3_guidance_loss_scale_audio',
+                when: { key: 'lossMethod', value: 'guidance' }
+            },
+            {
+                key: 'h3TeacherConditionSigmaMin',
+                label: 'Teacher condition minimum sigma',
+                helper: 'Low-end teacher gate; the subject_ref recipe uses 0.15.',
+                trainFlag: '--h3_teacher_condition_sigma_min',
+                when: {
+                    key: 'lossMethod',
+                    value: ['teacher-first-last', 'teacher-ref', 'teacher-subject-ref']
+                }
+            },
+            {
+                key: 'h3TeacherConditionSigmaMax',
+                label: 'Teacher condition maximum sigma',
+                helper: 'High-noise base-preservation anchor; 0.75 for endpoint/reference teachers, empty (1.0) for subject_ref.',
+                trainFlag: '--h3_teacher_condition_sigma_max',
+                when: {
+                    key: 'lossMethod',
+                    value: ['teacher-first-last', 'teacher-ref', 'teacher-subject-ref']
+                }
+            },
+            {
+                key: 'h3TeacherLossDcWeight',
+                label: 'Teacher DC loss weight',
+                helper: 'Below 1 stops the dataset palette being learned as a style shift; recipes use 0.3, keep 1.0 for style LoRAs.',
+                trainFlag: '--h3_teacher_loss_dc_weight',
+                when: {
+                    key: 'lossMethod',
+                    value: ['teacher-first-last', 'teacher-ref', 'teacher-subject-ref']
+                }
+            },
+            {
+                key: 'h3TeacherLossMagWeight',
+                label: 'Teacher magnitude loss weight',
+                helper: 'Below 1 prioritizes direction over magnitude; the subject_ref recipe uses 0.5.',
+                trainFlag: '--h3_teacher_loss_mag_weight',
+                when: {
+                    key: 'lossMethod',
+                    value: ['teacher-first-last', 'teacher-ref', 'teacher-subject-ref']
+                }
+            },
+            {
+                key: 'h3TimestepFocusProb',
+                label: 'Teacher timestep focus probability',
+                helper: 'Fraction of draws in the 0.4-0.8 base band; recipes use 0.5 for endpoint/reference teachers.',
+                trainFlag: '--h3_timestep_focus_prob',
+                when: {
+                    key: 'lossMethod',
+                    value: ['teacher-first-last', 'teacher-ref', 'teacher-subject-ref']
+                }
+            },
+            {
+                key: 'audioLossWeight',
+                label: 'Audio loss weight',
+                helper: 'Scales the audio loss for samples cached with real audio.',
+                trainFlag: '--audio_loss_weight'
+            },
+            {
+                key: 'cacheSeed',
+                label: 'Cache seed',
+                helper: 'Seed for reproducible target-video latents during caching.'
+            },
+            {
+                key: 'textEncoderBlocksToSwap',
+                label: 'Text encoder blocks to swap',
+                helper: 'Cache-only; up to 50.'
+            },
+            {
+                key: 'textEncoderAttnMode',
+                label: 'Text encoder attention mode',
+                helper: 'sdpa, flash_attention_2, or eager; empty = default.'
+            }
+        ],
+        attentionOptions: [attention.sdpa, attention.flash, attention.sage, attention.xformers],
+        memoryFlags: [
+            {
+                key: 'oneFrame',
+                label: 'One-frame (image) mode',
+                helper: 'Also passed to both cache stages.',
+                flag: '--one_frame'
+            },
+            {
+                key: 'videoOnly',
+                label: 'Video only',
+                helper: 'Disable audio loss; always enable for image datasets.',
+                flag: '--video_only'
+            },
+            {
+                key: 'convrotInt8',
+                label: 'ConvRot INT8',
+                helper: 'Quantize a BF16 transformer to ConvRot INT8 at load time (~66 to ~34 GB); use this instead of an INT8 file with a training adapter.',
+                flag: '--convrot_int8'
+            },
+            {
+                key: 'pruneAdaln',
+                label: 'Prune AdaLN',
+                helper: 'Prune AdaLN projections of a full BF16 transformer at load time (~66 to ~40 GB); combines with ConvRot INT8.',
+                flag: '--prune_adaln'
+            },
+            {
+                key: 'splitAttn',
+                label: 'Split attention',
+                helper: 'Reduce attention memory usage.',
+                flag: '--split_attn'
+            }
+        ],
+        defaults: {
+            ...commonDefaults,
+            task: 't2va',
+            lossMethod: 'guidance',
+            dit: './diffusion_models/minimax_h3_fl2va_bf16.safetensors',
+            videoVae: './vae/minimax_h3_video_vae_fp16.safetensors',
+            audioVae: './vae/minimax_h3_audio_vae_fp32.safetensors',
+            textEncoder: './text_encoders/qwen3vl_32b_minimax_h3_bf16.safetensors',
+            baseWeights: '',
+            guidanceUncondCache: './uncond.safetensors',
+            h3GuidanceLossScale: '4.0',
+            h3GuidanceLossSigmaMin: '0.15',
+            h3GuidanceLossScaleAudio: '',
+            h3TeacherConditionSigmaMin: '',
+            h3TeacherConditionSigmaMax: '',
+            h3TeacherLossDcWeight: '',
+            h3TeacherLossMagWeight: '',
+            h3TimestepFocusProb: '',
+            audioLossWeight: '1.0',
+            cacheSeed: '42',
+            textEncoderBlocksToSwap: '0',
+            textEncoderAttnMode: '',
+            epochs: '16',
+            saveEvery: '1',
+            networkDim: '16',
+            networkAlpha: '16',
+            optimizer: 'adamw8bit',
+            learningRate: '1e-4',
+            scheduler: 'constant',
+            warmupSteps: '0',
+            mixedPrecision: 'bf16',
+            blocksToSwap: '48',
+            timestepSampling: 'uniform',
+            flowShift: '1.0',
+            weightingScheme: 'none',
+            workers: '2',
+            attention: 'sdpa',
+            cacheBatchSize: '1',
+            oneFrame: false,
+            videoOnly: false,
+            convrotInt8: false,
+            pruneAdaln: false,
+            splitAttn: false
         }
     }
 }

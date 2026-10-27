@@ -14,27 +14,37 @@ const TerminalComponent = ({ content, emptyMessage }: TerminalComponentProps) =>
     const fitAddon = useRef<FitAddon | null>(null)
 
     useEffect(() => {
-        if (!terminalRef.current) return
+        const host = terminalRef.current
+        if (!host) return
 
         const terminal = new Terminal({
             fontSize: 14,
             fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
             cursorBlink: false,
             convertEol: true,
-            theme: { background: '#020617' }
+            theme: { background: '#020617', brightBlack: '#94a3b8' }
         })
         const fit = new FitAddon()
         terminal.loadAddon(fit)
-        terminal.open(terminalRef.current)
+        terminal.open(host)
         terminalInstance.current = terminal
         fitAddon.current = fit
-        requestAnimationFrame(() => fit.fit())
-
-        const handleResize = () => requestAnimationFrame(() => fit.fit())
-        window.addEventListener('resize', handleResize)
+        let pendingFrame: number | null = null
+        const scheduleFit = () => {
+            if (pendingFrame !== null) return
+            pendingFrame = requestAnimationFrame(() => {
+                pendingFrame = null
+                if (host.clientWidth === 0 || host.clientHeight === 0) return
+                fit.fit()
+            })
+        }
+        const resizeObserver = new ResizeObserver(scheduleFit)
+        resizeObserver.observe(host)
+        scheduleFit()
 
         return () => {
-            window.removeEventListener('resize', handleResize)
+            resizeObserver.disconnect()
+            if (pendingFrame !== null) cancelAnimationFrame(pendingFrame)
             terminal.dispose()
             terminalInstance.current = null
             fitAddon.current = null
@@ -50,7 +60,13 @@ const TerminalComponent = ({ content, emptyMessage }: TerminalComponentProps) =>
 
     return (
         <div className="bg-slate-950 p-2">
-            <div ref={terminalRef} className="h-[55vh] min-h-80" />
+            <div
+                ref={terminalRef}
+                role="region"
+                aria-label="Training job logs"
+                translate="no"
+                className="h-[55vh] min-h-80"
+            />
         </div>
     )
 }

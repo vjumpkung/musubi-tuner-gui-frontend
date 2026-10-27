@@ -2,6 +2,16 @@ import { type DownloadJob, type DownloadStatus, downloadsApi, queryKeys } from '
 import { getApiErrorMessage } from '../../api/client'
 import useDownloadSettings from '../../hooks/useDownloadSettings'
 import { downloadFamilies, downloadModels, type DownloadModel } from './catalog'
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle
+} from '@/components/ui/alert-dialog'
 import { Button, Card, CardBody, Input, Option, Select, Typography } from '@/components/ui/legacy'
 import { cn } from '@/lib/utils'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -39,16 +49,18 @@ const truncateDownloadStatus = (status: string) =>
 
 const jobStyles: Record<DownloadStatus, string> = {
     queued: 'bg-warning-muted text-warning-foreground ring-warning-border',
-    running: 'bg-accent text-primary ring-primary/20',
+    running: 'bg-accent text-accent-foreground ring-primary/20',
     completed: 'bg-success-muted text-success-foreground ring-success-border',
     failed: 'bg-destructive/10 text-destructive ring-destructive/20',
-    cancelled: 'bg-gray-100 text-gray-700 ring-gray-200'
+    cancelled: 'bg-muted text-muted-foreground ring-border'
 }
 
 type DownloadRowProps = {
     model: DownloadModel
     job?: DownloadJob
     starting: boolean
+    cancelling: boolean
+    cancelDisabled: boolean
     destination: string
     onStart: (model: DownloadModel) => void
     onCancel: (model: DownloadModel, job: DownloadJob) => void
@@ -58,6 +70,8 @@ const DownloadRow = ({
     model,
     job,
     starting,
+    cancelling,
+    cancelDisabled,
     destination,
     onStart,
     onCancel
@@ -65,6 +79,14 @@ const DownloadRow = ({
     const active = isActive(job)
     const progress = Math.min(100, Math.max(0, job?.progress ?? 0))
     const downloadStatus = job?.message || job?.current_file
+    const startLabel = starting
+        ? 'Starting…'
+        : job?.status === 'completed'
+          ? 'Download again'
+          : job?.status === 'failed' || job?.status === 'cancelled'
+            ? 'Retry'
+            : 'Download'
+    const cancelLabel = cancelling ? 'Cancelling…' : 'Cancel'
 
     return (
         <article>
@@ -72,13 +94,13 @@ const DownloadRow = ({
                 <CardBody className="flex flex-col gap-5 p-5 sm:p-6 xl:flex-row xl:items-start xl:justify-between">
                     <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
-                            <Typography variant="h5" color="blue-gray">
+                            <Typography as="h2" variant="h5" color="blue-gray" translate="no">
                                 {model.name}
                             </Typography>
                             <span className="rounded bg-muted px-2 py-1 text-xs font-semibold text-muted-foreground">
                                 {model.task}
                             </span>
-                            <span className="rounded bg-accent px-2 py-1 text-xs font-semibold text-primary">
+                            <span className="rounded bg-accent px-2 py-1 text-xs font-semibold text-accent-foreground">
                                 {model.precision}
                             </span>
                             {job ? (
@@ -94,10 +116,12 @@ const DownloadRow = ({
                         </div>
                         <p className="mt-2 text-sm text-muted-foreground">{model.description}</p>
                         <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs text-muted-foreground">
-                            <span className="font-mono">{model.script}</span>
                             <span>{model.files.length} output files</span>
                             {model.trainingScripts ? (
-                                <span>Used by {model.trainingScripts.join(', ')}</span>
+                                <span>
+                                    Used by{' '}
+                                    <span translate="no">{model.trainingScripts.join(', ')}</span>
+                                </span>
                             ) : null}
                         </div>
                         <details className="mt-3 text-sm text-muted-foreground">
@@ -106,7 +130,7 @@ const DownloadRow = ({
                             </summary>
                             <ul className="mt-2 flex flex-col gap-1 border-l-2 border-border pl-3 font-mono text-xs">
                                 {model.files.map((file) => (
-                                    <li className="break-all" key={file}>
+                                    <li className="break-all" key={file} translate="no">
                                         {file}
                                     </li>
                                 ))}
@@ -122,12 +146,16 @@ const DownloadRow = ({
                                 className="mt-3 w-full min-w-0 max-w-full truncate text-xs text-muted-foreground"
                                 title={downloadStatus}
                                 aria-label={downloadStatus}
+                                translate={job?.message ? undefined : 'no'}
                             >
                                 {truncateDownloadStatus(downloadStatus)}
                             </p>
                         ) : null}
                         {job?.error ? (
-                            <p className="mt-3 flex items-start gap-2 text-sm text-destructive">
+                            <p
+                                role="alert"
+                                className="mt-3 flex items-start gap-2 text-sm text-destructive"
+                            >
                                 <ExclamationCircleIcon className="mt-0.5 h-4 w-4 shrink-0" />
                                 <span>{job.error}</span>
                             </p>
@@ -142,7 +170,7 @@ const DownloadRow = ({
                                 className="mt-3 h-2 overflow-hidden rounded bg-muted"
                             >
                                 <div
-                                    className="h-full bg-primary transition-[width]"
+                                    className="h-full bg-primary transition-[width] motion-reduce:transition-none"
                                     style={{ width: `${progress}%` }}
                                 />
                             </div>
@@ -155,12 +183,15 @@ const DownloadRow = ({
                                 color="red"
                                 variant="outlined"
                                 size="sm"
-                                title={`Cancel ${model.name} download`}
+                                title={`${cancelLabel} ${model.name}`}
+                                aria-label={`${cancelLabel} ${model.name}`}
+                                disabled={cancelDisabled}
+                                loading={cancelling}
                                 className="flex min-h-11 flex-1 items-center justify-center gap-2 px-5 py-3 text-sm xl:w-full"
                                 onClick={() => onCancel(model, job)}
                             >
-                                <StopIcon className="h-5 w-5" />
-                                Cancel
+                                {cancelling ? null : <StopIcon className="h-5 w-5" />}
+                                {cancelLabel}
                             </Button>
                         ) : (
                             <Button
@@ -168,7 +199,8 @@ const DownloadRow = ({
                                 color="blue"
                                 size="sm"
                                 disabled={starting || !destination.trim()}
-                                title={`Download ${model.name}`}
+                                title={`${startLabel} ${model.name}`}
+                                aria-label={`${startLabel} ${model.name}`}
                                 className="flex min-h-11 flex-1 items-center justify-center gap-2 px-5 py-3 text-sm xl:w-full"
                                 onClick={() => onStart(model)}
                             >
@@ -179,13 +211,7 @@ const DownloadRow = ({
                                 ) : (
                                     <ArrowDownTrayIcon className="h-5 w-5" />
                                 )}
-                                {starting
-                                    ? 'Starting'
-                                    : job?.status === 'completed'
-                                      ? 'Download again'
-                                      : job?.status === 'failed' || job?.status === 'cancelled'
-                                        ? 'Retry'
-                                        : 'Download'}
+                                {startLabel}
                             </Button>
                         )}
                     </div>
@@ -201,6 +227,10 @@ const Downloads = () => {
     const [destination, setDestination] = useState('.')
     const [query, setQuery] = useState('')
     const [family, setFamily] = useState(downloadFamilies[0])
+    const [cancelTarget, setCancelTarget] = useState<{
+        model: DownloadModel
+        job: DownloadJob
+    } | null>(null)
 
     const visibleModels = useMemo(() => {
         const normalizedQuery = query.trim().toLowerCase()
@@ -209,8 +239,8 @@ const Downloads = () => {
             const matchesFamily = family === downloadFamilies[0] || model.family === family
             const matchesQuery =
                 !normalizedQuery ||
-                [model.name, model.family, model.task, model.precision, model.script].some(
-                    (value) => value.toLowerCase().includes(normalizedQuery)
+                [model.name, model.family, model.task, model.precision].some((value) =>
+                    value.toLowerCase().includes(normalizedQuery)
                 )
 
             return matchesFamily && matchesQuery
@@ -253,8 +283,10 @@ const Downloads = () => {
     })
 
     const startDownload = (model: DownloadModel) => startMutation.mutate({ model })
-    const cancelDownload = (model: DownloadModel, job: DownloadJob) =>
-        cancelMutation.mutate({ model, job })
+    const cancelDownload = (model: DownloadModel, job: DownloadJob) => {
+        if (cancelMutation.isPending) return
+        setCancelTarget({ model, job })
+    }
 
     const requestError = downloadsQuery.error
         ? getApiErrorMessage(downloadsQuery.error, 'The download list could not be loaded.')
@@ -283,6 +315,10 @@ const Downloads = () => {
                     <div className="grid gap-5 lg:grid-cols-[minmax(18rem,1fr)_minmax(14rem,0.6fr)]">
                         <Input
                             type="text"
+                            name="destination"
+                            autoComplete="off"
+                            spellCheck={false}
+                            translate="no"
                             size="lg"
                             label="Destination root"
                             value={destination}
@@ -308,11 +344,13 @@ const Downloads = () => {
                         <div className="w-full max-w-xl">
                             <Input
                                 type="search"
+                                name="search"
+                                autoComplete="off"
                                 label="Search model bundles"
                                 value={query}
                                 onChange={(event) => setQuery(event.target.value)}
                                 icon={<MagnifyingGlassIcon className="h-5 w-5" />}
-                                placeholder="Model, task, precision, or script name"
+                                placeholder="Model, task, precision, or script name…"
                             />
                         </div>
                         <div className="flex shrink-0 items-center gap-4 text-sm text-muted-foreground">
@@ -342,17 +380,25 @@ const Downloads = () => {
             ) : null}
 
             <section className="grid gap-3" aria-label="Available model downloads">
-                {visibleModels.map((model) => (
-                    <DownloadRow
-                        key={model.id}
-                        model={model}
-                        job={jobs[model.id]}
-                        starting={startingId === model.id}
-                        destination={destination}
-                        onStart={startDownload}
-                        onCancel={cancelDownload}
-                    />
-                ))}
+                {visibleModels.map((model) => {
+                    const job = jobs[model.id]
+                    return (
+                        <DownloadRow
+                            key={model.id}
+                            model={model}
+                            job={job}
+                            starting={startingId === model.id}
+                            cancelling={
+                                cancelMutation.isPending &&
+                                cancelMutation.variables?.job.id === job?.id
+                            }
+                            cancelDisabled={cancelMutation.isPending}
+                            destination={destination}
+                            onStart={startDownload}
+                            onCancel={cancelDownload}
+                        />
+                    )
+                })}
             </section>
 
             {visibleModels.length === 0 ? (
@@ -360,6 +406,36 @@ const Downloads = () => {
                     No download bundles match the current filters.
                 </div>
             ) : null}
+
+            <AlertDialog
+                open={cancelTarget !== null}
+                onOpenChange={(open) => {
+                    if (!open) setCancelTarget(null)
+                }}
+            >
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Cancel download?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Cancel the download for “
+                            <span translate="no">{cancelTarget?.model.name}</span>”?
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Keep downloading</AlertDialogCancel>
+                        <AlertDialogAction
+                            variant="destructive"
+                            disabled={cancelMutation.isPending}
+                            onClick={() => {
+                                if (!cancelTarget || cancelMutation.isPending) return
+                                cancelMutation.mutate(cancelTarget)
+                            }}
+                        >
+                            Cancel download
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </main>
     )
 }

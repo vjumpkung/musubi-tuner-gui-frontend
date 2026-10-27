@@ -9,7 +9,7 @@ const MONITOR_INTERVAL_MS = 5_000
 
 const formatBytes = (bytes: number | null) => {
     if (bytes === null) return 'Unavailable'
-    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024) return `${new Intl.NumberFormat().format(bytes)} B`
     const units = ['KB', 'MB', 'GB', 'TB']
     let value = bytes / 1024
     let unit = units[0]
@@ -18,7 +18,11 @@ const formatBytes = (bytes: number | null) => {
         value /= 1024
         unit = nextUnit
     }
-    return `${value.toFixed(value >= 10 ? 1 : 2)} ${unit}`
+    const fractionDigits = value >= 10 ? 1 : 2
+    return `${new Intl.NumberFormat(undefined, {
+        minimumFractionDigits: fractionDigits,
+        maximumFractionDigits: fractionDigits
+    }).format(value)} ${unit}`
 }
 
 const clampPercent = (value: number | null) => Math.min(100, Math.max(0, value ?? 0))
@@ -38,16 +42,22 @@ const ResourceMeter = ({ label, icon, percent, detail, note }: ResourceMeterProp
                 <span className="text-primary [&>svg]:h-5 [&>svg]:w-5">{icon}</span>
                 <p className="truncate text-sm font-semibold text-foreground">{label}</p>
             </div>
-            <span className="text-2xl font-semibold tracking-tight text-foreground">
-                {percent === null ? '—' : `${percent.toFixed(1)}%`}
+            <span className="text-2xl font-semibold tracking-tight text-foreground tabular-nums">
+                {percent === null
+                    ? '—'
+                    : `${new Intl.NumberFormat(undefined, {
+                          minimumFractionDigits: 1,
+                          maximumFractionDigits: 1
+                      }).format(percent)}%`}
             </span>
         </div>
         <Progress
-            value={clampPercent(percent)}
+            value={percent === null ? null : clampPercent(percent)}
             className="mt-4"
             aria-label={`${label} utilization`}
+            aria-valuetext={percent === null ? 'Unavailable' : undefined}
         />
-        <div className="mt-3 flex items-end justify-between gap-3 text-xs">
+        <div className="mt-3 flex items-end justify-between gap-3 text-xs tabular-nums">
             <span className="font-medium text-foreground">{detail}</span>
             <span className="text-right text-muted-foreground">{note}</span>
         </div>
@@ -72,7 +82,7 @@ const SystemMonitor = () => {
             <CardBody className="p-5">
                 <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                        <Typography variant="h5" color="blue-gray">
+                        <Typography as="h2" variant="h5" color="blue-gray">
                             System resources
                         </Typography>
                         <p className="mt-1 text-sm text-muted-foreground">
@@ -90,7 +100,10 @@ const SystemMonitor = () => {
                 </div>
 
                 {errorMessage ? (
-                    <p className="rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
+                    <p
+                        role="alert"
+                        className="rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive"
+                    >
                         {errorMessage}
                     </p>
                 ) : resources ? (
@@ -118,7 +131,10 @@ const SystemMonitor = () => {
                                 detail={
                                     gpu.temperature_c === null
                                         ? 'Temperature unavailable'
-                                        : `${gpu.temperature_c.toFixed(0)} °C`
+                                        : `${new Intl.NumberFormat(undefined, {
+                                              minimumFractionDigits: 0,
+                                              maximumFractionDigits: 0
+                                          }).format(gpu.temperature_c)} °C`
                                 }
                                 note="Compute utilization"
                             />,

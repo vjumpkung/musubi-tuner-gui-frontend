@@ -4,7 +4,6 @@ export type DownloadModel = {
     family: string
     task: string
     precision: string
-    script: string
     description: string
     files: string[]
     trainingScripts?: string[]
@@ -18,7 +17,6 @@ export const downloadModels: DownloadModel[] = [
         family: 'FLUX',
         task: 'Image',
         precision: 'FP8 mixed',
-        script: 'download_flux2_dev.sh',
         description: 'FLUX.2 Dev DiT, VAE, and Mistral 3 Small text encoder.',
         files: [
             'diffusion_models/flux2_dev_fp8mixed.safetensors',
@@ -33,7 +31,6 @@ export const downloadModels: DownloadModel[] = [
         family: 'FLUX',
         task: 'Image',
         precision: 'BF16',
-        script: 'download_flux2_klein_base_4b.sh',
         description: 'FLUX.2 Klein Base 4B DiT, AE VAE, and Qwen3 4B text encoder.',
         files: [
             'diffusion_models/flux-2-klein-base-4b.safetensors',
@@ -42,7 +39,7 @@ export const downloadModels: DownloadModel[] = [
             'text_encoders/qwen3_4b/model-00002-of-00002.safetensors'
         ],
         trainingScripts: ['flux2_training_script.sh'],
-        note: 'Requires Hugging Face authentication and access to all referenced repositories.'
+        note: 'Gated download: accept the license for black-forest-labs/FLUX.2-dev on Hugging Face, then add your token in Settings.'
     },
     {
         id: 'flux2-klein-base-9b',
@@ -50,7 +47,6 @@ export const downloadModels: DownloadModel[] = [
         family: 'FLUX',
         task: 'Image',
         precision: 'BF16',
-        script: 'download_flux2_klein_base_9b.sh',
         description: 'FLUX.2 Klein Base 9B DiT, AE VAE, and Qwen3 8B text encoder.',
         files: [
             'diffusion_models/flux-2-klein-base-9b.safetensors',
@@ -61,7 +57,7 @@ export const downloadModels: DownloadModel[] = [
             'text_encoders/qwen3_8b/model-00004-of-00004.safetensors'
         ],
         trainingScripts: ['flux2_training_script.sh'],
-        note: 'Requires Hugging Face authentication and access to all referenced repositories.'
+        note: 'Gated download: accept the licenses for black-forest-labs/FLUX.2-dev, FLUX.2-klein-9B, and FLUX.2-klein-base-9B on Hugging Face, then add your token in Settings.'
     },
     {
         id: 'flux-kontext-dev',
@@ -69,7 +65,6 @@ export const downloadModels: DownloadModel[] = [
         family: 'FLUX',
         task: 'Image edit',
         precision: 'FP8 scaled',
-        script: 'download_flux_kontext_dev.sh',
         description: 'Kontext Dev DiT with FLUX VAE, T5-XXL, and CLIP-L encoders.',
         files: [
             'diffusion_models/flux1-dev-kontext_fp8_scaled.safetensors',
@@ -77,7 +72,8 @@ export const downloadModels: DownloadModel[] = [
             'text_encoders/t5xxl_fp16.safetensors',
             'text_encoders/clip_l.safetensors'
         ],
-        trainingScripts: ['flux_kontext_training_script.sh']
+        trainingScripts: ['flux_kontext_training_script.sh'],
+        note: 'Gated download: accept the license for black-forest-labs/FLUX.1-schnell (VAE) on Hugging Face, then add your token in Settings.'
     },
     {
         id: 'framepack',
@@ -85,7 +81,6 @@ export const downloadModels: DownloadModel[] = [
         family: 'FramePack',
         task: 'Image to video',
         precision: 'BF16 / FP16',
-        script: 'download_framepack.sh',
         description: 'Three-shard FramePack DiT and all encoders required for I2V training.',
         files: [
             'diffusion_models/diffusion_pytorch_model-00001-of-00003.safetensors',
@@ -105,7 +100,6 @@ export const downloadModels: DownloadModel[] = [
         family: 'HiDream',
         task: 'Image',
         precision: 'BF16',
-        script: 'download_hidream_o1.sh',
         description: 'HiDream O1 image checkpoint for full-model training.',
         files: ['diffusion_models/hidream_o1_image_bf16.safetensors'],
         trainingScripts: ['hidream_o1_training_script.sh'],
@@ -117,7 +111,6 @@ export const downloadModels: DownloadModel[] = [
         family: 'HunyuanVideo',
         task: 'Text to video',
         precision: 'BF16 / FP16',
-        script: 'download_hunyuan_video.sh',
         description: 'Original HunyuanVideo DiT, VAE, LLaVA-LLaMA3, and CLIP-L bundle.',
         files: [
             'diffusion_models/mp_rank_00_model_states.pt',
@@ -133,7 +126,6 @@ export const downloadModels: DownloadModel[] = [
         family: 'HunyuanVideo',
         task: 'T2V + I2V',
         precision: 'BF16 / FP16',
-        script: 'download_hunyuan_video_1_5.sh',
         description: 'Both 720p DiTs plus VAE, Qwen2.5-VL, ByT5, and SigLIP encoders.',
         files: [
             'diffusion_models/hunyuanvideo1.5_720p_t2v.safetensors',
@@ -151,7 +143,6 @@ export const downloadModels: DownloadModel[] = [
         family: 'Ideogram',
         task: 'Image',
         precision: 'FP8 scaled',
-        script: 'download_ideogram4.sh',
         description: 'Ideogram 4 DiT with FLUX.2 VAE and Qwen3-VL 8B encoder.',
         files: [
             'diffusion_models/ideogram4_fp8_scaled.safetensors',
@@ -167,7 +158,6 @@ export const downloadModels: DownloadModel[] = [
         family: 'Kandinsky',
         task: 'Text to video',
         precision: 'BF16',
-        script: 'download_kandinsky5_t2v.sh',
         description: 'Kandinsky 5 Pro 5-second T2V checkpoint and HunyuanVideo VAE.',
         files: [
             'diffusion_models/kandinsky5pro_t2v_sft_5s.safetensors',
@@ -182,14 +172,14 @@ export const downloadModels: DownloadModel[] = [
         family: 'Krea',
         task: 'Image',
         precision: 'BF16',
-        script: 'download_krea2.sh',
         description: 'Krea 2 RAW checkpoint with Qwen-Image VAE and Qwen3-VL 4B encoder.',
         files: [
             'diffusion_models/raw.safetensors',
             'vae/qwen_image_vae.safetensors',
             'text_encoders/qwen3vl_4b_bf16.safetensors'
         ],
-        trainingScripts: ['krea2_training_script.sh']
+        trainingScripts: ['krea2_training_script.sh'],
+        note: 'Gated download: accept the license for krea/Krea-2-Raw on Hugging Face, then add your token in Settings.'
     },
     {
         id: 'qwen-image-bf16',
@@ -197,7 +187,6 @@ export const downloadModels: DownloadModel[] = [
         family: 'Qwen',
         task: 'Image',
         precision: 'BF16',
-        script: 'download_qwen_image_fp16.sh',
         description: 'Base Qwen Image model with VAE and Qwen2.5-VL 7B encoder.',
         files: [
             'diffusion_models/qwen_image_bf16.safetensors',
@@ -212,7 +201,6 @@ export const downloadModels: DownloadModel[] = [
         family: 'Qwen',
         task: 'Image',
         precision: 'FP8 E4M3FN',
-        script: 'download_qwen_image_fp8.sh',
         description: 'Lower-memory Qwen Image model with the standard VAE and encoder.',
         files: [
             'diffusion_models/qwen_image_fp8_e4m3fn.safetensors',
@@ -227,7 +215,6 @@ export const downloadModels: DownloadModel[] = [
         family: 'Qwen',
         task: 'Image edit',
         precision: 'BF16',
-        script: 'download_qwen_image_edit_fp16.sh',
         description: 'Original Qwen Image Edit checkpoint with VAE and Qwen2.5-VL encoder.',
         files: [
             'diffusion_models/qwen_image_edit_bf16.safetensors',
@@ -241,7 +228,6 @@ export const downloadModels: DownloadModel[] = [
         family: 'Qwen',
         task: 'Image edit',
         precision: 'BF16',
-        script: 'download_qwen_image_edit_2509_fp16.sh',
         description: 'September 2025 Qwen Image Edit checkpoint with VAE and encoder.',
         files: [
             'diffusion_models/qwen_image_edit_2509_bf16.safetensors',
@@ -255,7 +241,6 @@ export const downloadModels: DownloadModel[] = [
         family: 'Wan',
         task: 'Text to video',
         precision: 'BF16',
-        script: 'download_wan21_t2v_14B_fp16.sh',
         description: 'Wan 2.1 T2V 14B checkpoint with shared VAE and UMT5-XXL encoder.',
         files: [
             'diffusion_models/wan2.1_t2v_14B_bf16.safetensors',
@@ -269,7 +254,6 @@ export const downloadModels: DownloadModel[] = [
         family: 'Wan',
         task: 'Image to video',
         precision: 'FP16',
-        script: 'download_wan21_i2v_14B_fp16.sh',
         description: 'Wan 2.1 I2V 480p 14B checkpoint with shared VAE and UMT5-XXL encoder.',
         files: [
             'diffusion_models/wan2.1_i2v_480p_14B_fp16.safetensors',
@@ -284,7 +268,6 @@ export const downloadModels: DownloadModel[] = [
         family: 'Wan',
         task: 'Text to video',
         precision: 'FP16',
-        script: 'download_wan22_t2v_14B_fp16.sh',
         description: 'Wan 2.2 T2V high- and low-noise checkpoints with VAE and encoder.',
         files: [
             'diffusion_models/wan2.2_t2v_low_noise_14B_fp16.safetensors',
@@ -300,7 +283,6 @@ export const downloadModels: DownloadModel[] = [
         family: 'Wan',
         task: 'Image to video',
         precision: 'FP16',
-        script: 'download_wan22_i2v_14B_fp16.sh',
         description: 'Wan 2.2 I2V high- and low-noise checkpoints with VAE and encoder.',
         files: [
             'diffusion_models/wan2.2_i2v_low_noise_14B_fp16.safetensors',
@@ -315,7 +297,6 @@ export const downloadModels: DownloadModel[] = [
         family: 'Z-Image',
         task: 'Image',
         precision: 'BF16',
-        script: 'download_z_image_base_bf16.sh',
         description: 'Z-Image base checkpoint with AE VAE and Qwen3 4B encoder.',
         files: [
             'diffusion_models/z_image_bf16.safetensors',
@@ -330,13 +311,72 @@ export const downloadModels: DownloadModel[] = [
         family: 'Z-Image',
         task: 'Image',
         precision: 'BF16',
-        script: 'download_z_image_turbo_bf16.sh',
         description: 'Z-Image Turbo checkpoint with AE VAE and Qwen3 4B encoder.',
         files: [
             'diffusion_models/z_image_turbo_bf16.safetensors',
             'vae/ae.safetensors',
             'text_encoders/qwen_3_4b.safetensors'
         ]
+    },
+    {
+        id: 'minimax-h3-fl2va-bf16',
+        name: 'MiniMax H3 FL2VA BF16',
+        family: 'MiniMax H3',
+        task: 'Video + audio',
+        precision: 'BF16',
+        description: 'FL2VA base with the Qwen3-VL-32B H3 encoder and video/audio VAEs.',
+        files: [
+            'diffusion_models/minimax_h3_fl2va_bf16.safetensors',
+            'text_encoders/qwen3vl_32b_minimax_h3_bf16.safetensors',
+            'vae/minimax_h3_video_vae_fp16.safetensors',
+            'vae/minimax_h3_audio_vae_fp32.safetensors'
+        ],
+        note: 'Accept the MiniMax-H3 Community License before use. FL2VA base serves T2VA/FL2VA; Ref2VA base serves Ref2VA.'
+    },
+    {
+        id: 'minimax-h3-fl2va-int8',
+        name: 'MiniMax H3 FL2VA ConvRot INT8',
+        family: 'MiniMax H3',
+        task: 'Video + audio',
+        precision: 'ConvRot INT8',
+        description: 'ConvRot INT8 FL2VA base and H3 encoder with video/audio VAEs.',
+        files: [
+            'diffusion_models/minimax_h3_fl2va_int8_convrot.safetensors',
+            'text_encoders/qwen3vl_32b_minimax_h3_int8_convrot.safetensors',
+            'vae/minimax_h3_video_vae_fp16.safetensors',
+            'vae/minimax_h3_audio_vae_fp32.safetensors'
+        ],
+        note: 'Accept the MiniMax-H3 Community License before use. FL2VA base serves T2VA/FL2VA; Ref2VA base serves Ref2VA.'
+    },
+    {
+        id: 'minimax-h3-ref2va-bf16',
+        name: 'MiniMax H3 Ref2VA BF16',
+        family: 'MiniMax H3',
+        task: 'Video + audio',
+        precision: 'BF16',
+        description: 'Ref2VA base with the Qwen3-VL-32B H3 encoder and video/audio VAEs.',
+        files: [
+            'diffusion_models/minimax_h3_ref2va_bf16.safetensors',
+            'text_encoders/qwen3vl_32b_minimax_h3_bf16.safetensors',
+            'vae/minimax_h3_video_vae_fp16.safetensors',
+            'vae/minimax_h3_audio_vae_fp32.safetensors'
+        ],
+        note: 'Accept the MiniMax-H3 Community License before use. FL2VA base serves T2VA/FL2VA; Ref2VA base serves Ref2VA.'
+    },
+    {
+        id: 'minimax-h3-ref2va-int8',
+        name: 'MiniMax H3 Ref2VA ConvRot INT8',
+        family: 'MiniMax H3',
+        task: 'Video + audio',
+        precision: 'ConvRot INT8',
+        description: 'ConvRot INT8 Ref2VA base and H3 encoder with video/audio VAEs.',
+        files: [
+            'diffusion_models/minimax_h3_ref2va_int8_convrot.safetensors',
+            'text_encoders/qwen3vl_32b_minimax_h3_int8_convrot.safetensors',
+            'vae/minimax_h3_video_vae_fp16.safetensors',
+            'vae/minimax_h3_audio_vae_fp32.safetensors'
+        ],
+        note: 'Accept the MiniMax-H3 Community License before use. FL2VA base serves T2VA/FL2VA; Ref2VA base serves Ref2VA.'
     }
 ]
 

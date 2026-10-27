@@ -42,7 +42,7 @@ const JOBS_POLL_INTERVAL_MS = 5_000
 
 const statusStyles: Record<TrainingJob['status'], string> = {
     queued: 'bg-warning-muted text-warning-foreground',
-    running: 'bg-accent text-primary',
+    running: 'bg-accent text-accent-foreground',
     completed: 'bg-success-muted text-success-foreground',
     failed: 'bg-destructive/10 text-destructive',
     cancelled: 'bg-muted text-muted-foreground'
@@ -144,6 +144,7 @@ const artifactLabel = (artifact: TrainingArtifact) => {
 const LogViewer = () => {
     const queryClient = useQueryClient()
     const [selectedJobId, setSelectedJobId] = useState('')
+    const [cancelTarget, setCancelTarget] = useState<Pick<TrainingJob, 'id' | 'name'> | null>(null)
     const jobsQuery = useQuery({
         queryKey: queryKeys.jobs,
         queryFn: trainingApi.listJobs,
@@ -204,6 +205,8 @@ const LogViewer = () => {
         mutationFn: trainingApi.cancel,
         onSuccess: refresh
     })
+    const cancelling = cancelMutation.isPending && cancelMutation.variables === selectedJob?.id
+    const cancelLabel = cancelling ? 'Cancelling…' : 'Cancel'
     const retryMutation = useMutation({
         mutationFn: trainingApi.retry,
         onSuccess: async (job) => {
@@ -250,7 +253,12 @@ const LogViewer = () => {
                         </p>
                     </div>
                     <div className="flex items-center gap-3">
-                        <div className="text-right text-sm">
+                        <div
+                            role="status"
+                            aria-live="polite"
+                            aria-atomic="true"
+                            className="text-right text-sm"
+                        >
                             <p className="font-semibold capitalize text-foreground">
                                 Queue {queueQuery.data?.state ?? 'unavailable'}
                             </p>
@@ -262,33 +270,54 @@ const LogViewer = () => {
                             type="button"
                             color="blue"
                             disabled={!queueQuery.data || queueMutation.isPending}
+                            loading={queueMutation.isPending}
                             className="flex min-h-11 items-center gap-2"
                             onClick={() => queueMutation.mutate()}
                         >
-                            {queueQuery.data?.state === 'running' ? (
+                            {queueMutation.isPending ? null : queueQuery.data?.state ===
+                              'running' ? (
                                 <PauseIcon className="h-5 w-5" />
                             ) : (
                                 <PlayIcon className="h-5 w-5" />
                             )}
-                            {queueQuery.data?.state === 'running' ? 'Pause' : 'Start'}
+                            {queueMutation.isPending
+                                ? queueQuery.data?.state === 'running'
+                                    ? 'Pausing…'
+                                    : 'Starting…'
+                                : queueQuery.data?.state === 'running'
+                                  ? 'Pause'
+                                  : 'Start'}
                         </Button>
                     </div>
                 </div>
             </header>
 
             {errorMessage ? (
-                <div className="mb-5 rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive">
+                <div
+                    role="alert"
+                    className="mb-5 rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive"
+                >
                     {errorMessage}
                 </div>
             ) : null}
 
             <SystemMonitor />
 
+            <p role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+                {selectedJob
+                    ? `${selectedJob.name}: ${selectedJob.status}${
+                          selectedJob.current_stage
+                              ? ` · ${stageLabels[selectedJob.current_stage]}`
+                              : ''
+                      }`
+                    : ''}
+            </p>
+
             <div className="grid gap-5 lg:grid-cols-[22rem_minmax(0,1fr)]">
                 <Card className="border border-border shadow-sm">
                     <CardBody className="p-3">
                         <div className="mb-2 flex items-center justify-between px-2 py-1">
-                            <Typography variant="h5" color="blue-gray">
+                            <Typography as="h2" variant="h5" color="blue-gray">
                                 Training jobs
                             </Typography>
                             <span className="text-sm text-muted-foreground">{jobs.length}</span>
@@ -298,6 +327,7 @@ const LogViewer = () => {
                                 <button
                                     key={job.id}
                                     type="button"
+                                    aria-current={selectedJob?.id === job.id ? 'true' : undefined}
                                     className={cn(
                                         'w-full rounded-lg border p-3 text-left transition-colors',
                                         selectedJob?.id === job.id
@@ -320,7 +350,7 @@ const LogViewer = () => {
                                         </span>
                                     </div>
                                     <p className="mt-1 truncate text-xs text-muted-foreground">
-                                        {job.profile_id}
+                                        <span translate="no">{job.profile_id}</span>
                                         {job.queue_position !== null &&
                                         job.queue_position !== undefined
                                             ? ` · queue #${job.queue_position + 1}`
@@ -350,7 +380,7 @@ const LogViewer = () => {
                             <CardBody className="p-5">
                                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                                     <div>
-                                        <Typography variant="h5" color="blue-gray">
+                                        <Typography as="h2" variant="h5" color="blue-gray">
                                             {selectedJob.name}
                                         </Typography>
                                         <p className="mt-1 text-sm text-muted-foreground">
@@ -366,11 +396,20 @@ const LogViewer = () => {
                                                 variant="outlined"
                                                 className="flex items-center gap-2"
                                                 disabled={cancelMutation.isPending}
-                                                onClick={() =>
-                                                    cancelMutation.mutate(selectedJob.id)
-                                                }
+                                                loading={cancelling}
+                                                aria-label={`${cancelLabel} ${selectedJob.name}`}
+                                                onClick={() => {
+                                                    if (cancelMutation.isPending) return
+                                                    setCancelTarget({
+                                                        id: selectedJob.id,
+                                                        name: selectedJob.name
+                                                    })
+                                                }}
                                             >
-                                                <StopIcon className="h-4 w-4" /> Cancel
+                                                {cancelling ? null : (
+                                                    <StopIcon className="h-4 w-4" />
+                                                )}
+                                                {cancelLabel}
                                             </Button>
                                         ) : null}
                                         {['failed', 'cancelled'].includes(selectedJob.status) ? (
@@ -436,10 +475,7 @@ const LogViewer = () => {
                                             <p className="text-sm font-semibold text-foreground">
                                                 Training progress
                                             </p>
-                                            <p
-                                                className="mt-1 text-xs text-muted-foreground"
-                                                aria-live="polite"
-                                            >
+                                            <p className="mt-1 text-xs text-muted-foreground">
                                                 {stepProgressLabel(selectedJob)}
                                                 {selectedJob.progress.total_epochs
                                                     ? ` · Epoch ${selectedJob.progress.epoch ?? 0} of ${selectedJob.progress.total_epochs}`
@@ -574,7 +610,10 @@ const LogViewer = () => {
                                     ) : null}
                                 </div>
                                 {selectedJob.error ? (
-                                    <p className="mt-4 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
+                                    <p
+                                        role="alert"
+                                        className="mt-4 rounded-lg bg-destructive/10 p-3 text-sm text-destructive"
+                                    >
                                         {selectedJob.error}
                                     </p>
                                 ) : null}
@@ -594,6 +633,35 @@ const LogViewer = () => {
                     </Card>
                 </div>
             </div>
+
+            <AlertDialog
+                open={cancelTarget !== null}
+                onOpenChange={(open) => {
+                    if (!open) setCancelTarget(null)
+                }}
+            >
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Cancel training job?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Cancel “{cancelTarget?.name}”?
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Keep job</AlertDialogCancel>
+                        <AlertDialogAction
+                            variant="destructive"
+                            disabled={cancelMutation.isPending}
+                            onClick={() => {
+                                if (!cancelTarget || cancelMutation.isPending) return
+                                cancelMutation.mutate(cancelTarget.id)
+                            }}
+                        >
+                            Cancel job
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </main>
     )
 }

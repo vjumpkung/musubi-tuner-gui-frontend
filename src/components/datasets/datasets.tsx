@@ -56,7 +56,7 @@ import {
     TrashIcon,
     XIcon as XMarkIcon
 } from 'lucide-react'
-import { type ChangeEvent, type FormEvent, useEffect, useMemo, useState } from 'react'
+import { type ChangeEvent, type FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 
 type MediaType = ManagedDatasetInput['mediaType']
 
@@ -280,9 +280,14 @@ const controlMatchesMedia = (control: SelectedControl, media: SelectedMedia) => 
 }
 
 const formatFileSize = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+    if (bytes < 1024)
+        return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(bytes)} B`
+    const formatter = new Intl.NumberFormat(undefined, {
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1
+    })
+    if (bytes < 1024 * 1024) return `${formatter.format(bytes / 1024)} KB`
+    return `${formatter.format(bytes / (1024 * 1024))} MB`
 }
 
 const parseTargetFrames = (value: string) => {
@@ -445,7 +450,9 @@ const StoredDataset = ({
         <article className="rounded-xl border border-border bg-card p-4 shadow-sm">
             <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                    <h3 className="truncate font-semibold text-foreground">{summary.name}</h3>
+                    <h3 className="truncate font-semibold text-foreground" title={summary.name}>
+                        {summary.name}
+                    </h3>
                     {summary.description ? (
                         <p className="mt-1 line-clamp-2 text-sm leading-5 text-muted-foreground">
                             {summary.description}
@@ -453,7 +460,7 @@ const StoredDataset = ({
                     ) : null}
                 </div>
                 {sources[0] ? (
-                    <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-accent px-2.5 py-1 text-xs font-semibold capitalize text-primary">
+                    <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-accent px-2.5 py-1 text-xs font-semibold capitalize text-accent-foreground">
                         {sources[0].type === 'image' ? (
                             <PhotoIcon className="h-3.5 w-3.5" />
                         ) : (
@@ -483,7 +490,7 @@ const StoredDataset = ({
                                 Dataset {source.datasetIndex + 1} {source.label}
                                 {source.label === 'Target'
                                     ? ` · repeat ${source.numRepeats}`
-                                    : ''}: {source.path}
+                                    : ''}: <span translate="no">{source.path}</span>
                             </li>
                         ))}
                     </ul>
@@ -640,7 +647,7 @@ const GeneralSettingsEditor = ({
     return (
         <section className="mt-6 rounded-xl border border-border bg-muted/30 p-4 sm:p-5">
             <div className="mb-4">
-                <h2 className="font-semibold text-foreground">General TOML settings</h2>
+                <h3 className="font-semibold text-foreground">General TOML settings</h3>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
                     These required values are written once under [general] and apply to every
                     dataset below.
@@ -706,7 +713,7 @@ const UploadProgressPanel = ({ progress }: { progress: ManagedUploadProgress }) 
                     {Math.round(percent)}%
                 </span>
             </div>
-            <Progress value={percent} />
+            <Progress value={percent} aria-label="Dataset upload progress" />
             <div className="mt-2 flex items-center justify-between gap-3 text-xs text-muted-foreground">
                 <span className="min-w-0 truncate" title={progress.currentFile}>
                     {progress.phase === 'finalizing'
@@ -877,9 +884,9 @@ const DatasetEditor = ({
         >
             <div className="mb-5 flex items-start justify-between gap-3">
                 <div>
-                    <h2 id={`${draft.id}-heading`} className="font-semibold text-foreground">
+                    <h3 id={`${draft.id}-heading`} className="font-semibold text-foreground">
                         Dataset {index + 1}
-                    </h2>
+                    </h3>
                     <p className="mt-1 text-xs text-muted-foreground">
                         This section becomes one [[datasets]] table in the TOML file.
                     </p>
@@ -907,7 +914,7 @@ const DatasetEditor = ({
                             className={cn(
                                 'flex min-h-12 items-center justify-center gap-2 rounded-lg border px-4 py-3 text-sm font-semibold capitalize transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
                                 draft.mediaType === type
-                                    ? 'border-primary bg-accent text-primary'
+                                    ? 'border-primary bg-accent text-accent-foreground'
                                     : 'border-border bg-card text-muted-foreground hover:bg-muted'
                             )}
                             onClick={() => changeMediaType(type)}
@@ -1050,9 +1057,15 @@ const DatasetEditor = ({
                         onChange={selectFiles}
                     />
                 </label>
-                {draft.selectionError ? (
-                    <p className="mt-2 text-sm text-warning-foreground">{draft.selectionError}</p>
-                ) : null}
+                <p
+                    role="status"
+                    aria-live="polite"
+                    className={
+                        draft.selectionError ? 'mt-2 text-sm text-warning-foreground' : 'sr-only'
+                    }
+                >
+                    {draft.selectionError ?? ''}
+                </p>
                 {attemptedSubmit && !draft.selectedMedia.length ? (
                     <p className="mt-2 text-sm text-destructive">
                         Select at least one {draft.mediaType} file.
@@ -1063,12 +1076,12 @@ const DatasetEditor = ({
             {draft.mediaType === 'image' ? (
                 <section className="mt-5" aria-labelledby={`${draft.id}-controls-heading`}>
                     <div className="mb-3">
-                        <h3
+                        <h4
                             id={`${draft.id}-controls-heading`}
                             className="font-semibold text-foreground"
                         >
                             Control images (optional)
-                        </h3>
+                        </h4>
                         <p className="mt-1 text-xs leading-5 text-muted-foreground">
                             Match each target stem, for example a.jpg + a.png. For multiple controls
                             use a_0.png, a_1.png, or four-digit numbers.
@@ -1136,9 +1149,9 @@ const DatasetEditor = ({
                 <section className="mt-5" aria-labelledby={captionsHeadingId}>
                     <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
                         <div>
-                            <h3 id={captionsHeadingId} className="font-semibold text-foreground">
+                            <h4 id={captionsHeadingId} className="font-semibold text-foreground">
                                 Captions
-                            </h3>
+                            </h4>
                             <p className="text-xs text-muted-foreground">
                                 {draft.selectedMedia.length} files · {formatFileSize(totalSize)}{' '}
                                 total
@@ -1200,10 +1213,16 @@ const DatasetEditor = ({
                                     </button>
                                 </div>
                                 <Textarea
+                                    id={`${draft.id}-caption-${mediaIndex}`}
                                     required
                                     label={`Caption ${mediaIndex + 1}`}
                                     value={media.caption}
                                     error={attemptedSubmit && !media.caption.trim()}
+                                    aria-describedby={
+                                        attemptedSubmit && !media.caption.trim()
+                                            ? `${draft.id}-caption-${mediaIndex}-error`
+                                            : undefined
+                                    }
                                     onChange={(event) =>
                                         change((current) => ({
                                             ...current,
@@ -1220,6 +1239,14 @@ const DatasetEditor = ({
                                         }))
                                     }
                                 />
+                                {attemptedSubmit && !media.caption.trim() ? (
+                                    <p
+                                        id={`${draft.id}-caption-${mediaIndex}-error`}
+                                        className="mt-2 text-sm text-destructive"
+                                    >
+                                        Add a caption for this file.
+                                    </p>
+                                ) : null}
                             </div>
                         ))}
                     </div>
@@ -1252,6 +1279,11 @@ const ManagedDatasetEditDialog = ({
     )
     const [attemptedSubmit, setAttemptedSubmit] = useState(false)
     const [uploadProgress, setUploadProgress] = useState<ManagedUploadProgress>()
+    const [dirty, setDirty] = useState(false)
+    const [discardOpen, setDiscardOpen] = useState(false)
+    const formRef = useRef<HTMLFormElement>(null)
+    const previousFocusRef = useRef<HTMLElement | null>(null)
+    const discardingRef = useRef(false)
     const updateMutation = useMutation({
         mutationFn: datasetsApi.updateManaged,
         onSuccess: (dataset) => {
@@ -1276,11 +1308,15 @@ const ManagedDatasetEditDialog = ({
         0
     )
     const updateError = updateMutation.error
-        ? getApiErrorMessage(updateMutation.error, 'The dataset could not be updated.')
+        ? getApiErrorMessage(
+              updateMutation.error,
+              'The dataset could not be updated. Check that the backend is available, review the selected files, and try saving again.'
+          )
         : undefined
 
     const submit = (event: FormEvent) => {
         event.preventDefault()
+        if (updateMutation.isPending) return
         setAttemptedSubmit(true)
         updateMutation.reset()
         if (!formIsValid) return
@@ -1298,25 +1334,40 @@ const ManagedDatasetEditDialog = ({
         updateMutation.mutate(input)
     }
 
-    const resetError = () => updateMutation.reset()
+    const markEdited = () => {
+        if (updateMutation.isPending) return
+        setDirty(true)
+        updateMutation.reset()
+    }
+
+    const requestClose = () => {
+        if (updateMutation.isPending) return
+        if (!dirty) {
+            onClose()
+            return
+        }
+        previousFocusRef.current =
+            document.activeElement instanceof HTMLElement ? document.activeElement : null
+        discardingRef.current = false
+        setDiscardOpen(true)
+    }
 
     return (
         <Dialog
             open
             onOpenChange={(open) => {
-                if (!open && !updateMutation.isPending) onClose()
+                if (!open) requestClose()
             }}
         >
-            <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-5xl">
+            <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto overscroll-contain sm:max-w-5xl">
                 <DialogHeader>
                     <DialogTitle>Edit managed dataset</DialogTitle>
                     <DialogDescription>
-                        Add or remove media, update captions and repeats, or change the TOML
-                        sections. Existing files stay on the server unless you remove them here.
+                        Changes, including file removals, are applied when you save.
                     </DialogDescription>
                 </DialogHeader>
 
-                <form onSubmit={submit} noValidate>
+                <form ref={formRef} onSubmit={submit} noValidate>
                     {updateError ? (
                         <Alert variant="destructive" className="mb-5">
                             <ExclamationCircleIcon />
@@ -1325,76 +1376,78 @@ const ManagedDatasetEditDialog = ({
                         </Alert>
                     ) : null}
 
-                    <div className="grid gap-5 sm:grid-cols-2">
-                        <Input
-                            required
-                            size="lg"
-                            label="Dataset name"
-                            value={name}
-                            error={attemptedSubmit && !name.trim()}
-                            containerProps={inputContainerProps}
-                            onChange={(event) => {
-                                resetError()
-                                setName(event.target.value)
-                            }}
-                        />
-                        <div className="sm:col-span-2">
-                            <Textarea
-                                label="Description (optional)"
-                                value={description}
+                    <fieldset disabled={updateMutation.isPending} className="min-w-0">
+                        <div className="grid gap-5 sm:grid-cols-2">
+                            <Input
+                                required
+                                size="lg"
+                                label="Dataset name"
+                                value={name}
+                                error={attemptedSubmit && !name.trim()}
+                                containerProps={inputContainerProps}
                                 onChange={(event) => {
-                                    resetError()
-                                    setDescription(event.target.value)
+                                    markEdited()
+                                    setName(event.target.value)
                                 }}
                             />
+                            <div className="sm:col-span-2">
+                                <Textarea
+                                    label="Description (optional)"
+                                    value={description}
+                                    onChange={(event) => {
+                                        markEdited()
+                                        setDescription(event.target.value)
+                                    }}
+                                />
+                            </div>
                         </div>
-                    </div>
 
-                    <GeneralSettingsEditor
-                        value={general}
-                        attemptedSubmit={attemptedSubmit}
-                        onChange={setGeneral}
-                        onTouched={resetError}
-                    />
+                        <GeneralSettingsEditor
+                            value={general}
+                            attemptedSubmit={attemptedSubmit}
+                            onChange={setGeneral}
+                            onTouched={markEdited}
+                        />
 
-                    <div className="mt-6 flex flex-col gap-5">
-                        {drafts.map((draft, index) => (
-                            <DatasetEditor
-                                key={draft.id}
-                                draft={draft}
-                                index={index}
-                                canRemove={drafts.length > 1}
-                                attemptedSubmit={attemptedSubmit}
-                                onTouched={resetError}
-                                onChange={(update) =>
-                                    setDrafts((current) =>
-                                        current.map((item) =>
-                                            item.id === draft.id ? update(item) : item
+                        <div className="mt-6 flex flex-col gap-5">
+                            {drafts.map((draft, index) => (
+                                <DatasetEditor
+                                    key={draft.id}
+                                    draft={draft}
+                                    index={index}
+                                    canRemove={drafts.length > 1}
+                                    attemptedSubmit={attemptedSubmit}
+                                    onTouched={markEdited}
+                                    onChange={(update) =>
+                                        setDrafts((current) =>
+                                            current.map((item) =>
+                                                item.id === draft.id ? update(item) : item
+                                            )
                                         )
-                                    )
-                                }
-                                onRemove={() => {
-                                    resetError()
-                                    setDrafts((current) =>
-                                        current.filter((item) => item.id !== draft.id)
-                                    )
-                                }}
-                            />
-                        ))}
-                    </div>
+                                    }
+                                    onRemove={() => {
+                                        markEdited()
+                                        setDrafts((current) =>
+                                            current.filter((item) => item.id !== draft.id)
+                                        )
+                                    }}
+                                />
+                            ))}
+                        </div>
 
-                    <ShadcnButton
-                        type="button"
-                        variant="outline"
-                        className="mt-5 w-full border-dashed"
-                        onClick={() => {
-                            resetError()
-                            setDrafts((current) => [...current, createDatasetDraft()])
-                        }}
-                    >
-                        <PlusIcon data-icon="inline-start" />
-                        Add another dataset to this TOML
-                    </ShadcnButton>
+                        <ShadcnButton
+                            type="button"
+                            variant="outline"
+                            className="mt-5 w-full border-dashed"
+                            onClick={() => {
+                                markEdited()
+                                setDrafts((current) => [...current, createDatasetDraft()])
+                            }}
+                        >
+                            <PlusIcon data-icon="inline-start" />
+                            Add another dataset to this TOML
+                        </ShadcnButton>
+                    </fieldset>
 
                     {uploadProgress ? <UploadProgressPanel progress={uploadProgress} /> : null}
 
@@ -1403,7 +1456,7 @@ const ManagedDatasetEditDialog = ({
                             type="button"
                             variant="outline"
                             disabled={updateMutation.isPending}
-                            onClick={onClose}
+                            onClick={requestClose}
                         >
                             Cancel
                         </ShadcnButton>
@@ -1421,6 +1474,39 @@ const ManagedDatasetEditDialog = ({
                         </ShadcnButton>
                     </DialogFooter>
                 </form>
+                <AlertDialog open={discardOpen} onOpenChange={setDiscardOpen}>
+                    <AlertDialogContent
+                        onCloseAutoFocus={(event) => {
+                            event.preventDefault()
+                            if (discardingRef.current) return
+                            const previousFocus = previousFocusRef.current
+                            if (previousFocus?.isConnected && !previousFocus.matches(':disabled')) {
+                                previousFocus.focus()
+                            } else {
+                                formRef.current?.querySelector<HTMLInputElement>('input')?.focus()
+                            }
+                        }}
+                    >
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>Discard changes?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                                Your unsaved changes will be lost.
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel>Keep editing</AlertDialogCancel>
+                            <AlertDialogAction
+                                variant="destructive"
+                                onClick={() => {
+                                    discardingRef.current = true
+                                    onClose()
+                                }}
+                            >
+                                Discard changes
+                            </AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
             </DialogContent>
         </Dialog>
     )
@@ -1573,7 +1659,10 @@ const Datasets = () => {
     }
 
     const createError = createMutation.error
-        ? getApiErrorMessage(createMutation.error, 'The dataset could not be created.')
+        ? getApiErrorMessage(
+              createMutation.error,
+              'The dataset could not be created. Check that the backend is available, review the selected files, and try again.'
+          )
         : undefined
     const listError = datasetQuery.error
         ? getApiErrorMessage(datasetQuery.error, 'Stored datasets could not be loaded.')
@@ -1604,7 +1693,7 @@ const Datasets = () => {
                 <Card className="border border-border shadow-sm">
                     <CardBody className="p-5 sm:p-7">
                         <div className="mb-6">
-                            <Typography variant="h4" color="blue-gray">
+                            <Typography as="h2" variant="h4" color="blue-gray">
                                 Create a managed dataset config
                             </Typography>
                             <p className="mt-1 text-sm text-muted-foreground">
@@ -1715,7 +1804,7 @@ const Datasets = () => {
 
                             <button
                                 type="button"
-                                className="mt-5 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-dashed border-primary/30 bg-accent/50 px-4 py-3 text-sm font-semibold text-primary transition-colors hover:border-primary hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                                className="mt-5 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-dashed border-primary/30 bg-accent/50 px-4 py-3 text-sm font-semibold text-accent-foreground transition-colors hover:border-primary hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                                 onClick={() => {
                                     clearCreationResult()
                                     setDrafts((current) => [...current, createDatasetDraft()])
@@ -1754,7 +1843,7 @@ const Datasets = () => {
                 <aside className="xl:sticky xl:top-5">
                     <div className="mb-4 flex items-center justify-between gap-3 px-1">
                         <div>
-                            <Typography variant="h5" color="blue-gray">
+                            <Typography as="h2" variant="h5" color="blue-gray">
                                 Stored configs
                             </Typography>
                             <p className="mt-1 text-xs text-muted-foreground">

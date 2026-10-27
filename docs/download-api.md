@@ -2,7 +2,7 @@
 
 The GUI backend is a single FastAPI service that covers three areas:
 
-- **Downloads** — run allowlisted model download scripts as async jobs.
+- **Downloads** — download catalog model files directly over HTTPS as async jobs.
 - **Dataset manager** — store multiple musubi-tuner dataset configurations and import/export them
   as `.toml` files (see the
   [musubi-tuner dataset config spec](https://github.com/kohya-ss/musubi-tuner/blob/main/docs/dataset_config.md)).
@@ -89,34 +89,53 @@ Rules:
 
 The Downloads screen uses an asynchronous job API.
 
-### Script allowlist
+### Download catalog
 
-The API must map `script_id` to a fixed filename. Do not accept a filename or shell command from
-the request.
+`script_id` is the historical wire name of the catalog model ID. The backend maps it to a
+fixed list of HTTPS URLs on `huggingface.co` and relative output paths. Requests cannot supply
+URLs, filenames, paths within a bundle, or shell commands. Downloads use `httpx` directly;
+neither bash nor the Hugging Face `hf` CLI is required.
 
-| `script_id`            | Script filename                         |
-| ---------------------- | --------------------------------------- |
-| `flux2-dev`            | `download_flux2_dev.sh`                 |
-| `flux2-klein-base-4b`  | `download_flux2_klein_base_4b.sh`       |
-| `flux2-klein-base-9b`  | `download_flux2_klein_base_9b.sh`       |
-| `flux-kontext-dev`     | `download_flux_kontext_dev.sh`          |
-| `framepack`            | `download_framepack.sh`                 |
-| `hidream-o1`           | `download_hidream_o1.sh`                |
-| `hunyuan-video`        | `download_hunyuan_video.sh`             |
-| `hunyuan-video-1-5`    | `download_hunyuan_video_1_5.sh`         |
-| `ideogram-4`           | `download_ideogram4.sh`                 |
-| `kandinsky-5-t2v`      | `download_kandinsky5_t2v.sh`            |
-| `krea-2`               | `download_krea2.sh`                     |
-| `qwen-image-bf16`      | `download_qwen_image_fp16.sh`           |
-| `qwen-image-fp8`       | `download_qwen_image_fp8.sh`            |
-| `qwen-image-edit`      | `download_qwen_image_edit_fp16.sh`      |
-| `qwen-image-edit-2509` | `download_qwen_image_edit_2509_fp16.sh` |
-| `wan-2-1-t2v-14b`      | `download_wan21_t2v_14B_fp16.sh`        |
-| `wan-2-1-i2v-14b`      | `download_wan21_i2v_14B_fp16.sh`        |
-| `wan-2-2-t2v-14b`      | `download_wan22_t2v_14B_fp16.sh`        |
-| `wan-2-2-i2v-14b`      | `download_wan22_i2v_14B_fp16.sh`        |
-| `z-image-base`         | `download_z_image_base_bf16.sh`         |
-| `z-image-turbo`        | `download_z_image_turbo_bf16.sh`        |
+| `script_id` | Model bundle |
+| --- | --- |
+| `flux2-dev` | FLUX.2 Dev |
+| `flux2-klein-base-4b` | FLUX.2 Klein Base 4B |
+| `flux2-klein-base-9b` | FLUX.2 Klein Base 9B |
+| `flux-kontext-dev` | FLUX.1 Kontext Dev |
+| `framepack` | FramePack I2V |
+| `hidream-o1` | HiDream O1 |
+| `hunyuan-video` | Hunyuan Video |
+| `hunyuan-video-1-5` | HunyuanVideo 1.5 |
+| `ideogram-4` | Ideogram 4 |
+| `kandinsky-5-t2v` | Kandinsky 5 T2V |
+| `krea-2` | Krea 2 |
+| `qwen-image-bf16` | Qwen Image BF16 |
+| `qwen-image-fp8` | Qwen Image FP8 |
+| `qwen-image-edit` | Qwen Image Edit |
+| `qwen-image-edit-2509` | Qwen Image Edit 2509 |
+| `wan-2-1-t2v-14b` | Wan 2.1 T2V 14B |
+| `wan-2-1-i2v-14b` | Wan 2.1 I2V 14B |
+| `wan-2-2-t2v-14b` | Wan 2.2 T2V 14B |
+| `wan-2-2-i2v-14b` | Wan 2.2 I2V 14B |
+| `z-image-base` | Z-Image Base |
+| `z-image-turbo` | Z-Image Turbo |
+| `minimax-h3-fl2va-bf16` | MiniMax H3 FL2VA BF16 |
+| `minimax-h3-fl2va-int8` | MiniMax H3 FL2VA ConvRot INT8 |
+| `minimax-h3-ref2va-bf16` | MiniMax H3 Ref2VA BF16 |
+| `minimax-h3-ref2va-int8` | MiniMax H3 Ref2VA ConvRot INT8 |
+
+The four H3 bundles come from `Comfy-Org/MiniMax-H3`, with matching repository and output paths:
+
+| Bundle | Transformer | Text encoder |
+| --- | --- | --- |
+| `minimax-h3-fl2va-bf16` | `diffusion_models/minimax_h3_fl2va_bf16.safetensors` | `text_encoders/qwen3vl_32b_minimax_h3_bf16.safetensors` |
+| `minimax-h3-fl2va-int8` | `diffusion_models/minimax_h3_fl2va_int8_convrot.safetensors` | `text_encoders/qwen3vl_32b_minimax_h3_int8_convrot.safetensors` |
+| `minimax-h3-ref2va-bf16` | `diffusion_models/minimax_h3_ref2va_bf16.safetensors` | `text_encoders/qwen3vl_32b_minimax_h3_bf16.safetensors` |
+| `minimax-h3-ref2va-int8` | `diffusion_models/minimax_h3_ref2va_int8_convrot.safetensors` | `text_encoders/qwen3vl_32b_minimax_h3_int8_convrot.safetensors` |
+
+Each also includes `vae/minimax_h3_video_vae_fp16.safetensors` and
+`vae/minimax_h3_audio_vae_fp32.safetensors`. Accept the MiniMax-H3 Community License before use.
+The FL2VA base serves T2VA/FL2VA; the Ref2VA base serves Ref2VA.
 
 ### Start a download
 
@@ -132,9 +151,11 @@ Request:
 }
 ```
 
-`hf_token` is optional. When provided, pass it to the allowlisted process as the `HF_TOKEN`
-environment variable. Never include it in a job response, status message, error, or log; redact
-the exact token if a download script writes it to stdout or stderr.
+`hf_token` is optional; when omitted, the backend falls back to the `HF_TOKEN` environment
+variable. Cached `hf auth login` credentials are not read. The token is sent as a Bearer token
+to Hugging Face and is not forwarded on cross-origin redirects. Never include it in a job
+response, status message, error, or log. Invalid download requests return a generic
+`422 {"detail": "Invalid download request"}` without echoing request values.
 
 Return HTTP `202` with a job:
 
@@ -152,19 +173,15 @@ The allowed status values are `queued`, `running`, `completed`, `failed`, and `c
 `progress` is optional and, when present, must be a number from 0 through 100. `current_file`,
 `message`, and `error` are optional strings.
 
-Run the mapped script with `destination` as its working directory so its relative
-`diffusion_models`, `vae`, `text_encoders`, and `image_encoder` paths resolve beneath that root:
+Resolve `destination` inside the configured workspace root and place each catalog file at its
+relative output path beneath that destination. Stream files sequentially into job-owned `.part`
+files beside their targets, verify the response length when available, then atomically replace
+the final file. Failure or cancellation removes the temporary file and preserves any previous
+final file. Every run re-downloads and replaces files; there is no HF cache reuse or resume.
 
-```python
-process = await asyncio.create_subprocess_exec(
-    "bash",
-    str(allowlisted_script_path),
-    cwd=validated_destination,
-    stdout=asyncio.subprocess.PIPE,
-    stderr=asyncio.subprocess.STDOUT,
-    start_new_session=True,
-)
-```
+Resolved output paths are reserved until the job's task finishes. Overlapping bundles return
+`409`, including different model IDs that share encoders or VAEs. Running progress stays below
+100 until all files are installed; successful jobs report 100 and `Download completed`.
 
 ### List download jobs
 
@@ -197,9 +214,10 @@ The frontend polls this route every 1.5 seconds while the status is `queued` or 
 
 `POST /api/downloads/{job_id}/cancel`
 
-Terminate the job's process group, set its status to `cancelled`, and return HTTP `200` with the
-updated job object. Cancellation should be idempotent for an already-cancelled job. Return HTTP
-`409` when a completed or failed job can no longer be cancelled.
+Set the job's status to `cancelled`, cancel its download task, and await temporary-file cleanup
+before returning HTTP `200` with the updated job object. Repeated cancellation awaits the same
+cleanup without cancelling the task again. Output reservations are released only after cleanup.
+Return HTTP `409` when a completed or failed job can no longer be cancelled.
 
 ## Dataset manager
 
@@ -363,7 +381,7 @@ string or script path:
 - `profile_id` must be one of the allowlisted profile ids: `hunyuan-video`,
   `hunyuan-video-1-5`, `framepack`, `framepack-one-frame`, `wan-22`, `wan-one-frame`,
   `flux-kontext`, `flux-2`, `qwen-image`, `z-image-turbo`, `hidream-o1`, `ideogram-4`,
-  `kandinsky-5`, `krea-2`. Unknown ids return `404`.
+  `kandinsky-5`, `krea-2`, `minimax-h3`. Unknown ids return `404`.
 - The dataset config snapshot is written to `{DATA_ROOT}/jobs/{job_id}/dataset_config.toml` and
   its path is passed as `--dataset_config`; the client cannot point the trainer at an arbitrary
   file.
@@ -587,29 +605,32 @@ Return FastAPI's standard error shape so the frontend can display it:
 
 ```json
 {
-    "detail": "Unknown download script"
+    "detail": "Unknown download model"
 }
 ```
 
 - Return `400` for an invalid or disallowed destination, malformed TOML, or a rejected
   `extraArgs` token.
 - Return `404` for an unknown `script_id`, `profile_id`, dataset config ID, or job ID.
-- Return `409` when the same script already has an active job for the destination, a dataset
+- Return `409` when any download output path is reserved by an unfinished job's task, a dataset
   config name is taken, or a job is in the wrong state for cancel/reorder/delete.
-- Return `422` for a dataset config that parses but violates the validation rules.
-- Return `503` when `bash`, the Hugging Face `hf` CLI, `accelerate`, or required server
-  configuration is absent.
+- Return `422` for a dataset config that parses but violates the validation rules, or
+  `{"detail": "Invalid download request"}` for invalid download requests without echoing inputs.
+- Return `503` when Python, `accelerate`, required training scripts, or required server
+  configuration is absent. Downloads require no bash or Hugging Face CLI installation.
 - Resolve destinations and output/logging directories and require them to be inside a configured
   root. Do not allow the client to select arbitrary server filesystem locations. Dataset source
   directories are only read, never created or deleted, and are checked via the validate
   endpoint.
-- Execute with `create_subprocess_exec`; do not use `shell=True` and do not interpolate request
+- Execute training with `create_subprocess_exec`; do not use `shell=True` or interpolate request
   values into a command string.
-- Preserve combined stdout/stderr in a bounded job log for diagnostics. Never return Hugging Face
+- Preserve training stdout/stderr in a bounded job log for diagnostics. Never return Hugging Face
   tokens or environment secrets.
 - If the API is hosted on a different origin, allow the Vite frontend origin with FastAPI CORS
   middleware and set `VITE_API_BASE_URL` to the API origin at frontend build time.
 
-Progress is optional because the current shell scripts do not emit byte totals in a stable format.
-The API can omit it and update only `message` or `current_file` from each script's `echo` lines; the
-frontend still shows the correct running state.
+Download progress combines the number of installed files with the current file's byte fraction
+when its content length is available. `current_file` is the catalog output path and `message`
+reports `Downloading <path> (<index>/<count>)`. Progress reaches 100 only after all files are
+installed. Upstream response bodies, signed redirect URLs, headers, and raw exception text are
+never included in errors.
