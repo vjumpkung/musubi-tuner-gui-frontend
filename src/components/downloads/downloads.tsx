@@ -4,7 +4,7 @@ import useDownloadSettings from '../../hooks/useDownloadSettings'
 import { downloadFamilies, downloadModels, type DownloadModel } from './catalog'
 import { Button, Card, CardBody, Input, Option, Select, Typography } from '@/components/ui/legacy'
 import { cn } from '@/lib/utils'
-import { useMutation, useQueries, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
     DownloadIcon as ArrowDownTrayIcon,
     RefreshCwIcon as ArrowPathIcon,
@@ -20,6 +20,17 @@ const activeStatuses: DownloadStatus[] = ['queued', 'running']
 const MAX_DOWNLOAD_STATUS_LENGTH = 120
 
 const isActive = (job?: DownloadJob) => job && activeStatuses.includes(job.status)
+
+const updateJobList = (jobs: DownloadJob[] | undefined, updatedJob: DownloadJob) => {
+    const currentJobs = jobs ?? []
+    const existingIndex = currentJobs.findIndex((job) => job.id === updatedJob.id)
+
+    if (existingIndex === -1) {
+        return [updatedJob, ...currentJobs]
+    }
+
+    return currentJobs.map((job) => (job.id === updatedJob.id ? updatedJob : job))
+}
 
 const truncateDownloadStatus = (status: string) =>
     status.length > MAX_DOWNLOAD_STATUS_LENGTH
@@ -190,7 +201,6 @@ const Downloads = () => {
     const [destination, setDestination] = useState('.')
     const [query, setQuery] = useState('')
     const [family, setFamily] = useState(downloadFamilies[0])
-    const [jobIds, setJobIds] = useState<Record<string, string>>({})
 
     const visibleModels = useMemo(() => {
         const normalizedQuery = query.trim().toLowerCase()
@@ -207,46 +217,52 @@ const Downloads = () => {
         })
     }, [family, query])
 
-    const trackedJobs = Object.entries(jobIds)
-    const jobQueries = useQueries({
-        queries: trackedJobs.map(([, jobId]) => ({
-            queryKey: queryKeys.download(jobId),
-            queryFn: () => downloadsApi.get(jobId),
-            refetchInterval: (jobQuery: { state: { data?: DownloadJob } }) =>
-                isActive(jobQuery.state.data) ? 1_500 : false
-        }))
+    const downloadsQuery = useQuery({
+        queryKey: queryKeys.downloads,
+        queryFn: downloadsApi.list,
+        refetchOnMount: 'always',
+        refetchInterval: (downloadQuery) =>
+            downloadQuery.state.data?.some((job) => isActive(job)) ? 1_500 : false
     })
-    const jobs = Object.fromEntries(
-        trackedJobs.flatMap(([modelId], index) => {
-            const job = jobQueries[index]?.data
-            return job ? [[modelId, job]] : []
-        })
-    ) as Record<string, DownloadJob>
+    const jobs = (downloadsQuery.data ?? []).reduce<Record<string, DownloadJob>>(
+        (jobsByModel, job) => {
+            if (!jobsByModel[job.script_id]) {
+                jobsByModel[job.script_id] = job
+            }
+            return jobsByModel
+        },
+        {}
+    )
 
     const startMutation = useMutation({
         mutationFn: ({ model }: { model: DownloadModel }) =>
             downloadsApi.start(model.id, destination.trim(), hfToken),
-        onSuccess: (job, { model }) => {
-            queryClient.setQueryData(queryKeys.download(job.id), job)
-            setJobIds((current) => ({ ...current, [model.id]: job.id }))
-        }
+        onSuccess: (job) =>
+            queryClient.setQueryData<DownloadJob[]>(queryKeys.downloads, (jobs) =>
+                updateJobList(jobs, job)
+            )
     })
 
     const cancelMutation = useMutation({
         mutationFn: ({ job }: { model: DownloadModel; job: DownloadJob }) =>
             downloadsApi.cancel(job.id),
-        onSuccess: (job) => queryClient.setQueryData(queryKeys.download(job.id), job)
+        onSuccess: (job) =>
+            queryClient.setQueryData<DownloadJob[]>(queryKeys.downloads, (jobs) =>
+                updateJobList(jobs, job)
+            )
     })
 
     const startDownload = (model: DownloadModel) => startMutation.mutate({ model })
     const cancelDownload = (model: DownloadModel, job: DownloadJob) =>
         cancelMutation.mutate({ model, job })
 
-    const requestError = startMutation.error
-        ? getApiErrorMessage(startMutation.error, 'The download could not be started.')
-        : cancelMutation.error
-          ? getApiErrorMessage(cancelMutation.error, 'The download could not be cancelled.')
-          : undefined
+    const requestError = downloadsQuery.error
+        ? getApiErrorMessage(downloadsQuery.error, 'The download list could not be loaded.')
+        : startMutation.error
+          ? getApiErrorMessage(startMutation.error, 'The download could not be started.')
+          : cancelMutation.error
+            ? getApiErrorMessage(cancelMutation.error, 'The download could not be cancelled.')
+            : undefined
     const startingId = startMutation.isPending ? startMutation.variables.model.id : undefined
 
     const completedCount = Object.values(jobs).filter((job) => job.status === 'completed').length

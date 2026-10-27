@@ -166,6 +166,14 @@ process = await asyncio.create_subprocess_exec(
 )
 ```
 
+### List download jobs
+
+`GET /api/downloads`
+
+Return HTTP `200` with all in-memory download jobs, newest first. The frontend fetches this list
+whenever the Downloads screen mounts and polls it every 1.5 seconds while any job is `queued` or
+`running`, so switching screens does not lose active or terminal download state.
+
 ### Read job status
 
 `GET /api/downloads/{job_id}`
