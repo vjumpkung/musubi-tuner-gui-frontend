@@ -1,4 +1,14 @@
+import useManagedUploadGuard from '../hooks/useManagedUploadGuard'
 import useMenuBar, { Menu } from '../hooks/useMenubar'
+import {
+    AlertDialog,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle
+} from '@/components/ui/alert-dialog'
 import {
     Accordion,
     AccordionBody,
@@ -176,6 +186,9 @@ const SideBar = ({
 
     const menu = useMenuBar((state) => state.menu)
     const setMenuBar = useMenuBar((state) => state.setMenuBar)
+    const uploading = useManagedUploadGuard()
+    const [uploadBlockedOpen, setUploadBlockedOpen] = useState(false)
+    const blockedFocusRef = useRef<HTMLElement | null>(null)
 
     useEffect(() => {
         const desktopMedia = window.matchMedia('(min-width: 64rem)')
@@ -188,6 +201,12 @@ const SideBar = ({
     }, [])
 
     const selectMenu = (target: Menu) => {
+        if (uploading && target !== menu) {
+            blockedFocusRef.current =
+                document.activeElement instanceof HTMLElement ? document.activeElement : null
+            setUploadBlockedOpen(true)
+            return
+        }
         if (mobileOpen && target !== menu) {
             navigationPendingRef.current = true
             onNavigationStart()
@@ -300,6 +319,27 @@ const SideBar = ({
                     onSelectMenu={selectMenu}
                 />
             </Card>
+            <AlertDialog open={uploadBlockedOpen} onOpenChange={setUploadBlockedOpen}>
+                <AlertDialogContent
+                    onCloseAutoFocus={(event) => {
+                        event.preventDefault()
+                        const previousFocus = blockedFocusRef.current
+                        blockedFocusRef.current = null
+                        if (previousFocus?.isConnected) previousFocus.focus()
+                    }}
+                >
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Upload in progress</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Wait for the dataset upload to finish before switching pages. Leaving
+                            now would lose track of its progress and result.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel variant="default">Stay on this page</AlertDialogCancel>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </>
     )
 }

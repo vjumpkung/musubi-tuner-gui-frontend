@@ -7,6 +7,7 @@ import {
     type ManagedUploadProgress,
     type UpdateManagedDatasetInput,
     datasetsApi,
+    mutationKeys,
     queryKeys
 } from '../../api/api'
 import { getApiErrorMessage } from '../../api/client'
@@ -1285,6 +1286,7 @@ const ManagedDatasetEditDialog = ({
     const previousFocusRef = useRef<HTMLElement | null>(null)
     const discardingRef = useRef(false)
     const updateMutation = useMutation({
+        mutationKey: mutationKeys.managedUpload,
         mutationFn: datasetsApi.updateManaged,
         onSuccess: (dataset) => {
             setUploadProgress(undefined)
@@ -1582,6 +1584,7 @@ const Datasets = () => {
     )
 
     const createMutation = useMutation({
+        mutationKey: mutationKeys.managedUpload,
         mutationFn: datasetsApi.createManaged,
         onSuccess: async (dataset) => {
             setUploadProgress(undefined)

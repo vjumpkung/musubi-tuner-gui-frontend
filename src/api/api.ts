@@ -177,6 +177,10 @@ export const queryKeys = {
     systemResources: ['system', 'resources'] as const
 }
 
+export const mutationKeys = {
+    managedUpload: ['datasets', 'managed-upload'] as const
+}
+
 export const downloadsApi = {
     list: async () => (await apiClient.get<DownloadJob[]>('/api/downloads')).data,
     start: async (scriptId: string, destination: string, hfToken?: string) =>
