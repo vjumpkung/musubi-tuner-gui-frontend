@@ -124,7 +124,6 @@ neither bash nor the Hugging Face `hf` CLI is required.
 | `wan-2-2-t2v-14b` | Wan 2.2 T2V 14B |
 | `wan-2-2-i2v-14b` | Wan 2.2 I2V 14B |
 | `z-image-base` | Z-Image Base |
-| `z-image-turbo` | Z-Image Turbo |
 | `minimax-h3-fl2va-bf16` | MiniMax H3 FL2VA BF16 |
 | `minimax-h3-fl2va-int8` | MiniMax H3 FL2VA ConvRot INT8 |
 | `minimax-h3-ref2va-bf16` | MiniMax H3 Ref2VA BF16 |
@@ -171,13 +170,20 @@ Return HTTP `202` with a job:
     "script_id": "flux2-dev",
     "status": "queued",
     "progress": 0,
-    "message": "Waiting to start"
+    "message": "Waiting to start",
+    "files": [
+        "/workspace/diffusion_models/flux2_dev_fp8mixed.safetensors",
+        "/workspace/vae/flux2-vae.safetensors",
+        "/workspace/text_encoders/mistral_3_small_flux2_bf16.safetensors"
+    ]
 }
 ```
 
 The allowed status values are `queued`, `running`, `completed`, `failed`, and `cancelled`.
 `progress` is optional and, when present, must be a number from 0 through 100. `current_file`,
-`message`, and `error` are optional strings.
+`message`, and `error` are optional strings. `files` is always present: the absolute path of
+each file in the bundle, in catalog order, under the resolved destination. The files exist once
+the job is `completed`; MCP clients use the list to find the downloaded models.
 
 Resolve `destination` inside the configured workspace root and place each catalog file at its
 relative output path beneath that destination. Stream files sequentially into job-owned `.part`
@@ -212,7 +218,12 @@ Return HTTP `200` with the current job:
     "status": "running",
     "progress": 35,
     "current_file": "diffusion_models/flux2_dev_fp8mixed.safetensors",
-    "message": "Downloading FLUX.2 dev DiT"
+    "message": "Downloading FLUX.2 dev DiT",
+    "files": [
+        "/workspace/diffusion_models/flux2_dev_fp8mixed.safetensors",
+        "/workspace/vae/flux2-vae.safetensors",
+        "/workspace/text_encoders/mistral_3_small_flux2_bf16.safetensors"
+    ]
 }
 ```
 
@@ -508,6 +519,11 @@ render and store the dataset TOML snapshot; insert the row with status `queued`;
 another is running. Enqueueing sets the queue state to `paused`, but it does not interrupt that
 running job. After a successful response, the frontend navigates directly to Jobs & logs.
 
+The job object in the response also carries `warnings`, an array of strings that name `values`
+keys the profile ignores, such as `Unknown value 'learnRate' is ignored by profile wan-22`; it
+is empty when every key is recognized. A boolean-typed value such as `gradientCheckpointing`
+must be a JSON `true` or `false`; a string like `"true"` returns `422`.
+
 ### Read status and logs
 
 `GET /api/training/jobs/{id}` returns the job object. The frontend does not poll this route; it
@@ -549,18 +565,21 @@ suffixes are parsed as epoch numbers so the frontend can present each saved epoc
     "files": [
         {
             "name": "char_v3-000001.safetensors",
+            "path": "/workspace/lora_training/outputs/char_v3-000001.safetensors",
             "size_bytes": 184549376,
             "epoch": 1,
             "kind": "epoch"
         },
         {
             "name": "char_v3-000002.safetensors",
+            "path": "/workspace/lora_training/outputs/char_v3-000002.safetensors",
             "size_bytes": 184549376,
             "epoch": 2,
             "kind": "epoch"
         },
         {
             "name": "char_v3.safetensors",
+            "path": "/workspace/lora_training/outputs/char_v3.safetensors",
             "size_bytes": 184549376,
             "epoch": null,
             "kind": "final"
@@ -569,6 +588,9 @@ suffixes are parsed as epoch numbers so the frontend can present each saved epoc
     "total_size_bytes": 553648128
 }
 ```
+
+`path` is the absolute path of the file on the server, for scripts and MCP clients
+(`list_training_job_artifacts`); the download routes still address a file by `name`.
 
 `GET /api/training/jobs/{id}/artifacts/{name}/download` downloads one allowlisted file from that
 result. `GET /api/training/jobs/{id}/artifacts/download` streams all matching files as one
