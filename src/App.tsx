@@ -1,4 +1,5 @@
 import About from './about/about'
+import Login from './components/auth/login'
 import Datasets from './components/datasets/datasets'
 import Downloads from './components/downloads/downloads'
 import LogViewer from './components/logs/logs'
@@ -6,8 +7,11 @@ import Settings from './components/settings/settings'
 import SideBar from './components/sidebar'
 import { type TrainingProfile, trainingProfiles } from './components/training/profiles'
 import TrainingWorkspace from './components/training/shared/training_workspace'
+import useAuthStatus from './hooks/useAuthStatus'
 import useMenuBar, { Menu } from './hooks/useMenubar'
+import { useRealtimeSync } from './hooks/useRealtime'
 import { cn } from '@/lib/utils'
+import { LoaderCircleIcon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 const trainingProfileByMenu: Partial<Record<Menu, TrainingProfile['id']>> = {
@@ -28,7 +32,7 @@ const trainingProfileByMenu: Partial<Record<Menu, TrainingProfile['id']>> = {
     [Menu.MINIMAX_H3_TRAINER]: 'minimax-h3'
 }
 
-export default function App() {
+function Workspace() {
     const menu = useMenuBar((state) => state.menu)
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
     const mainContentRef = useRef<HTMLDivElement>(null)
@@ -82,5 +86,38 @@ export default function App() {
                 {menu === Menu.ABOUT ? <About /> : null}
             </div>
         </div>
+    )
+}
+
+function RealtimeSync() {
+    useRealtimeSync()
+
+    return null
+}
+
+export default function App() {
+    const authQuery = useAuthStatus()
+
+    if (authQuery.isPending) {
+        return (
+            <main
+                role="status"
+                className="flex min-h-screen items-center justify-center gap-2 text-sm text-muted-foreground"
+            >
+                <LoaderCircleIcon className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+                Loading…
+            </main>
+        )
+    }
+
+    if (authQuery.data?.enabled && !authQuery.data.authenticated) return <Login />
+
+    // A failed status request (for example a 404 from an older backend) still renders the app,
+    // but without realtime because that backend has no socket endpoint.
+    return (
+        <>
+            <Workspace />
+            {authQuery.data ? <RealtimeSync /> : null}
+        </>
     )
 }

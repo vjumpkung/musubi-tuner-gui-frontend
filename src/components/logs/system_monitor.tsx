@@ -1,5 +1,6 @@
 import { queryKeys, systemApi } from '../../api/api'
 import { getApiErrorMessage } from '../../api/client'
+import { useRealtimeConnected, useRealtimeSubscription } from '../../hooks/useRealtime'
 import { Card, CardBody, Progress, Typography } from '@/components/ui/legacy'
 import { useQuery } from '@tanstack/react-query'
 import { CpuIcon, GpuIcon, MemoryStickIcon, RefreshCwIcon } from 'lucide-react'
@@ -65,10 +66,12 @@ const ResourceMeter = ({ label, icon, percent, detail, note }: ResourceMeterProp
 )
 
 const SystemMonitor = () => {
+    const connected = useRealtimeConnected()
+    useRealtimeSubscription('system')
     const resourcesQuery = useQuery({
         queryKey: queryKeys.systemResources,
         queryFn: systemApi.getResources,
-        refetchInterval: MONITOR_INTERVAL_MS,
+        refetchInterval: connected ? false : MONITOR_INTERVAL_MS,
         refetchOnWindowFocus: false
     })
     const resources = resourcesQuery.data
@@ -94,8 +97,10 @@ const SystemMonitor = () => {
                             className={`h-4 w-4 ${resourcesQuery.isFetching ? 'animate-spin' : ''}`}
                         />
                         {updatedAt && !Number.isNaN(updatedAt.getTime())
-                            ? `Updated ${updatedAt.toLocaleTimeString()} · every 5 seconds`
-                            : 'Updates every 5 seconds'}
+                            ? `Updated ${updatedAt.toLocaleTimeString()} · ${connected ? 'Live' : 'every 5 seconds'}`
+                            : connected
+                              ? 'Live updates'
+                              : 'Updates every 5 seconds'}
                     </div>
                 </div>
 

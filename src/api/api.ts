@@ -165,7 +165,13 @@ export type SystemResourceSnapshot = {
     gpu_error: string | null
 }
 
+export type AuthStatus = {
+    enabled: boolean
+    authenticated: boolean
+}
+
 export const queryKeys = {
+    auth: ['auth', 'status'] as const,
     datasets: ['datasets'] as const,
     downloads: ['downloads'] as const,
     download: (jobId: string) => ['downloads', jobId] as const,
@@ -179,6 +185,15 @@ export const queryKeys = {
 
 export const mutationKeys = {
     managedUpload: ['datasets', 'managed-upload'] as const
+}
+
+export const authApi = {
+    status: async () => (await apiClient.get<AuthStatus>('/api/auth/status')).data,
+    login: async (password: string) =>
+        (await apiClient.post<AuthStatus>('/api/auth/login', { password })).data,
+    logout: async () => {
+        await apiClient.post('/api/auth/logout')
+    }
 }
 
 export const downloadsApi = {

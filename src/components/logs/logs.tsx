@@ -1,11 +1,15 @@
 import {
     type TrainingArtifact,
     type TrainingJob,
+    type TrainingJobStatus,
+    type TrainingLogChunk,
     type TrainingStage,
     queryKeys,
     trainingApi
 } from '../../api/api'
 import { getApiErrorMessage } from '../../api/client'
+import { getSocket } from '../../api/realtime'
+import { useRealtimeConnected, useRealtimeSubscription } from '../../hooks/useRealtime'
 import SystemMonitor from './system_monitor'
 import TerminalComponent from './terminal'
 import {
@@ -35,10 +39,12 @@ import {
     SquareIcon as StopIcon,
     TrashIcon
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { type MutableRefObject, useEffect, useRef, useState } from 'react'
 
 const activeStatuses: TrainingJob['status'][] = ['queued', 'running']
 const JOBS_POLL_INTERVAL_MS = 5_000
+const ARTIFACTS_LIVE_POLL_INTERVAL_MS = 30_000
+const terminalStatuses: TrainingJobStatus[] = ['completed', 'failed', 'cancelled']
 
 const statusStyles: Record<TrainingJob['status'], string> = {
     queued: 'bg-warning-muted text-warning-foreground',
@@ -77,36 +83,97 @@ const stepProgressLabel = (job: TrainingJob) => {
     return 'Training steps begin after preparation'
 }
 
-const useJobLog = (jobId: string) => {
-    const [stream, setStream] = useState({ jobId: '', offset: 0, content: '' })
-    const offset = stream.jobId === jobId ? stream.offset : 0
+type LogStream = {
+    jobId: string
+    offset: number
+    content: string
+}
+
+type LogPush = Pick<TrainingLogChunk, 'offset' | 'next_offset' | 'content'> & {
+    job_id: string
+}
+
+// The ref is the source of truth for the offset; it is reset lazily when the job changes.
+const streamFor = (streamRef: MutableRefObject<LogStream>, jobId: string) => {
+    if (streamRef.current.jobId !== jobId) streamRef.current = { jobId, offset: 0, content: '' }
+    return streamRef.current
+}
+
+const useJobLog = (jobId: string, jobStatus?: TrainingJobStatus) => {
+    const connected = useRealtimeConnected()
+    const streamRef = useRef<LogStream>({ jobId: '', offset: 0, content: '' })
+    const [stream, setStream] = useState<LogStream>(streamRef.current)
     const logQuery = useQuery({
         queryKey: queryKeys.logs(jobId),
-        queryFn: () => trainingApi.getLogs(jobId, offset),
+        queryFn: () => trainingApi.getLogs(jobId, streamFor(streamRef, jobId).offset),
         enabled: Boolean(jobId),
         staleTime: 0,
-        refetchInterval: (query) => (query.state.data?.eof ? false : JOBS_POLL_INTERVAL_MS),
+        // Chunks are consumed once as they arrive, so a cached chunk must not be replayed.
+        gcTime: 0,
+        refetchInterval: (query) =>
+            query.state.data?.eof || connected ? false : JOBS_POLL_INTERVAL_MS,
         refetchOnWindowFocus: false
     })
+    const { refetch } = logQuery
+    const chunk = logQuery.data
+    const terminal = jobStatus !== undefined && terminalStatuses.includes(jobStatus)
+
+    useRealtimeSubscription('job-log', jobId)
+
+    const append = (current: LogStream, nextOffset: number, content: string) => {
+        const next = {
+            jobId: current.jobId,
+            offset: nextOffset,
+            content: current.content + content
+        }
+        streamRef.current = next
+        setStream(next)
+    }
 
     useEffect(() => {
-        if (stream.jobId !== jobId) setStream({ jobId, offset: 0, content: '' })
-    }, [jobId, stream.jobId])
+        setStream(streamFor(streamRef, jobId))
+    }, [jobId])
 
     useEffect(() => {
-        const chunk = logQuery.data
-        if (!chunk) return
+        if (!chunk || !jobId) return
 
-        setStream((current) => {
-            if (current.jobId !== jobId || current.offset !== chunk.offset) return current
-            if (chunk.next_offset === current.offset && !chunk.content) return current
-            return {
-                jobId,
-                offset: chunk.next_offset,
-                content: current.content + chunk.content
+        const current = streamFor(streamRef, jobId)
+        if (chunk.offset === current.offset) {
+            const advanced = chunk.next_offset > current.offset
+            if (advanced) append(current, chunk.next_offset, chunk.content)
+            // Drain the backlog (the server caps each response) until an empty chunk comes back.
+            if (advanced && !chunk.eof) void refetch()
+        } else if (chunk.next_offset > current.offset) {
+            void refetch()
+        }
+    }, [chunk, jobId, refetch])
+
+    useEffect(() => {
+        if (!jobId) return
+
+        const socket = getSocket()
+        const onLog = (push: LogPush) => {
+            if (push.job_id !== jobId) return
+
+            const current = streamFor(streamRef, jobId)
+            if (push.offset === current.offset) {
+                append(current, push.next_offset, push.content)
+            } else if (push.next_offset > current.offset) {
+                // Missed part of the stream: let the HTTP endpoint fill the gap.
+                void refetch({ cancelRefetch: false })
             }
-        })
-    }, [jobId, logQuery.data])
+        }
+
+        socket.on('job:log', onLog)
+        return () => {
+            socket.off('job:log', onLog)
+        }
+    }, [jobId, refetch])
+
+    // Fetch the tail and eof once the job finishes, and catch up after the socket reconnects.
+    useEffect(() => {
+        if (jobId && (terminal || connected)) void refetch({ cancelRefetch: false })
+    }, [jobId, terminal, connected, refetch])
 
     return {
         content: stream.jobId === jobId ? stream.content : '',
@@ -145,28 +212,33 @@ const LogViewer = () => {
     const queryClient = useQueryClient()
     const [selectedJobId, setSelectedJobId] = useState('')
     const [cancelTarget, setCancelTarget] = useState<Pick<TrainingJob, 'id' | 'name'> | null>(null)
+    const connected = useRealtimeConnected()
     const jobsQuery = useQuery({
         queryKey: queryKeys.jobs,
         queryFn: trainingApi.listJobs,
-        refetchInterval: JOBS_POLL_INTERVAL_MS
+        refetchInterval: connected ? false : JOBS_POLL_INTERVAL_MS
     })
     const queueQuery = useQuery({
         queryKey: queryKeys.queue,
         queryFn: trainingApi.getQueue,
-        refetchInterval: JOBS_POLL_INTERVAL_MS
+        refetchInterval: connected ? false : JOBS_POLL_INTERVAL_MS
     })
     const jobs = jobsQuery.data ?? []
     const selectedJob =
         jobs.find((job) => job.id === selectedJobId) ??
         jobs.find((job) => job.status === 'running') ??
         jobs[0]
-    const jobLog = useJobLog(selectedJob?.id ?? '')
+    const jobLog = useJobLog(selectedJob?.id ?? '', selectedJob?.status)
     const shouldPollArtifacts = selectedJob?.status === 'running'
     const artifactsQuery = useQuery({
         queryKey: queryKeys.artifacts(selectedJob?.id ?? ''),
         queryFn: () => trainingApi.getArtifacts(selectedJob?.id ?? ''),
         enabled: Boolean(selectedJob),
-        refetchInterval: shouldPollArtifacts ? JOBS_POLL_INTERVAL_MS : false
+        refetchInterval: shouldPollArtifacts
+            ? connected
+                ? ARTIFACTS_LIVE_POLL_INTERVAL_MS
+                : JOBS_POLL_INTERVAL_MS
+            : false
     })
     const artifacts = artifactsQuery.data?.files ?? []
     const artifactCount = artifacts.length
@@ -182,7 +254,7 @@ const LogViewer = () => {
         void queryClient.invalidateQueries({
             queryKey: queryKeys.artifacts(selectedJob.id)
         })
-    }, [queryClient, selectedJob?.id, selectedJob?.status])
+    }, [queryClient, selectedJob?.id, selectedJob?.status, selectedJob?.progress.epoch])
 
     const refresh = async () => {
         await Promise.all([

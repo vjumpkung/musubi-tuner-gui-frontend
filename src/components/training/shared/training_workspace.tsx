@@ -5,6 +5,7 @@ import useAccelerationSettings, {
     defaultAccelerationSettings
 } from '../../../hooks/useAccelerationSettings'
 import useMenuBar, { Menu } from '../../../hooks/useMenubar'
+import { useRealtimeConnected } from '../../../hooks/useRealtime'
 import {
     type TrainingField,
     type TrainingProfile,
@@ -514,6 +515,7 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
     const publishingPanelId = useId()
     const queryClient = useQueryClient()
     const setMenuBar = useMenuBar((state) => state.setMenuBar)
+    const connected = useRealtimeConnected()
     const initialDraft = useMemo(() => readTrainingDraft(profile), [profile])
     const [values, setValues] = useState<TrainingValues>(() => initialDraft.values)
     const [openAdvanced, setOpenAdvanced] = useState(initialDraft.openAdvanced)
@@ -533,7 +535,7 @@ const TrainingWorkspace = ({ profile }: TrainingWorkspaceProps) => {
     const queueQuery = useQuery({
         queryKey: queryKeys.queue,
         queryFn: trainingApi.getQueue,
-        refetchInterval: 1_500
+        refetchInterval: connected ? false : 1_500
     })
     const datasets = datasetsQuery.data ?? []
     const effectiveDatasetId =
