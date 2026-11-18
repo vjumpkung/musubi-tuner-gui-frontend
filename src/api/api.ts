@@ -10,6 +10,7 @@ export type DownloadJob = {
     current_file?: string
     message?: string
     error?: string
+    files?: string[]
 }
 
 export type DatasetSummary = {
@@ -128,6 +129,7 @@ export type TrainingLogChunk = {
 
 export type TrainingArtifact = {
     name: string
+    path?: string
     size_bytes: number
     epoch: number | null
     kind: 'epoch' | 'checkpoint' | 'final'
@@ -449,7 +451,9 @@ export const trainingApi = {
         dataset_config_id: string
         skip_cache_stages: boolean
         values: Record<string, string | boolean>
-    }) => (await apiClient.post<TrainingJob>('/api/training/jobs', payload)).data,
+    }) =>
+        (await apiClient.post<TrainingJob & { warnings?: string[] }>('/api/training/jobs', payload))
+            .data,
     getLogs: async (jobId: string, offset: number) =>
         (
             await apiClient.get<TrainingLogChunk>(`/api/training/jobs/${jobId}/logs`, {
