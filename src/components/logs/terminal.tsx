@@ -12,6 +12,8 @@ const TerminalComponent = ({ content, emptyMessage }: TerminalComponentProps) =>
     const terminalRef = useRef<HTMLDivElement>(null)
     const terminalInstance = useRef<Terminal | null>(null)
     const fitAddon = useRef<FitAddon | null>(null)
+    const writtenRef = useRef('')
+    const placeholderShownRef = useRef(false)
 
     useEffect(() => {
         const host = terminalRef.current
@@ -29,6 +31,8 @@ const TerminalComponent = ({ content, emptyMessage }: TerminalComponentProps) =>
         terminal.open(host)
         terminalInstance.current = terminal
         fitAddon.current = fit
+        writtenRef.current = ''
+        placeholderShownRef.current = false
         let pendingFrame: number | null = null
         const scheduleFit = () => {
             if (pendingFrame !== null) return
@@ -48,14 +52,35 @@ const TerminalComponent = ({ content, emptyMessage }: TerminalComponentProps) =>
             terminal.dispose()
             terminalInstance.current = null
             fitAddon.current = null
+            writtenRef.current = ''
+            placeholderShownRef.current = false
         }
     }, [])
 
     useEffect(() => {
         const terminal = terminalInstance.current
         if (!terminal) return
-        terminal.reset()
-        terminal.write(content || `\x1b[90m${emptyMessage}\x1b[0m`)
+        if (!content) {
+            terminal.reset()
+            terminal.write(`\x1b[90m${emptyMessage}\x1b[0m`)
+            writtenRef.current = ''
+            placeholderShownRef.current = true
+            return
+        }
+        const written = writtenRef.current
+        if (
+            !placeholderShownRef.current &&
+            content.length >= written.length &&
+            content.startsWith(written)
+        ) {
+            const delta = content.slice(written.length)
+            if (delta) terminal.write(delta)
+        } else {
+            terminal.reset()
+            terminal.write(content)
+            placeholderShownRef.current = false
+        }
+        writtenRef.current = content
     }, [content, emptyMessage])
 
     return (

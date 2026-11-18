@@ -1,4 +1,6 @@
 import App from './App'
+import { queryKeys } from './api/api'
+import { setUnauthorizedHandler } from './api/client'
 import './index.css'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -17,6 +19,10 @@ const queryClient = new QueryClient({
         }
     }
 })
+
+setUnauthorizedHandler(() =>
+    queryClient.setQueryData(queryKeys.auth, { enabled: true, authenticated: false })
+)
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
     <React.StrictMode>

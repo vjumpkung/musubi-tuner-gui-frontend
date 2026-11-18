@@ -1,6 +1,7 @@
 import { type DownloadJob, type DownloadStatus, downloadsApi, queryKeys } from '../../api/api'
 import { getApiErrorMessage } from '../../api/client'
 import useDownloadSettings from '../../hooks/useDownloadSettings'
+import { useRealtimeConnected } from '../../hooks/useRealtime'
 import { downloadFamilies, downloadModels, type DownloadModel } from './catalog'
 import {
     AlertDialog,
@@ -224,6 +225,7 @@ const DownloadRow = ({
 const Downloads = () => {
     const queryClient = useQueryClient()
     const hfToken = useDownloadSettings((state) => state.hfToken)
+    const connected = useRealtimeConnected()
     const [destination, setDestination] = useState('.')
     const [query, setQuery] = useState('')
     const [family, setFamily] = useState(downloadFamilies[0])
@@ -251,8 +253,10 @@ const Downloads = () => {
         queryKey: queryKeys.downloads,
         queryFn: downloadsApi.list,
         refetchOnMount: 'always',
-        refetchInterval: (downloadQuery) =>
-            downloadQuery.state.data?.some((job) => isActive(job)) ? 1_500 : false
+        refetchInterval: connected
+            ? false
+            : (downloadQuery) =>
+                  downloadQuery.state.data?.some((job) => isActive(job)) ? 1_500 : false
     })
     const jobs = (downloadsQuery.data ?? []).reduce<Record<string, DownloadJob>>(
         (jobsByModel, job) => {

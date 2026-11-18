@@ -1,3 +1,5 @@
+import { authApi, queryKeys } from '../api/api'
+import useAuthStatus from '../hooks/useAuthStatus'
 import useManagedUploadGuard from '../hooks/useManagedUploadGuard'
 import useMenuBar, { Menu } from '../hooks/useMenubar'
 import {
@@ -29,6 +31,7 @@ import {
     SheetTrigger
 } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
     MenuIcon as Bars3Icon,
     PanelLeftCloseIcon as ChevronDoubleLeftIcon,
@@ -39,6 +42,7 @@ import {
     DatabaseIcon as CircleStackIcon,
     CloudDownloadIcon as CloudArrowDownIcon,
     InfoIcon as InformationCircleIcon,
+    LogOutIcon,
     SparklesIcon
 } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
@@ -74,6 +78,36 @@ type NavigationBodyProps = {
     onToggleTraining: () => void
     onSelectMenu: (target: Menu) => void
 }
+
+type LogoutSectionProps = {
+    pending: boolean
+    disabled: boolean
+    failed: boolean
+    onLogout: () => void
+}
+
+const LogoutSection = ({ pending, disabled, failed, onLogout }: LogoutSectionProps) => (
+    <div className="mt-2 border-t border-border pt-2">
+        <List>
+            <ListItem
+                className="disabled:pointer-events-none disabled:opacity-50"
+                disabled={disabled}
+                title={disabled && !pending ? 'Wait for the dataset upload to finish' : undefined}
+                onClick={onLogout}
+            >
+                <ListItemPrefix>
+                    <LogOutIcon className="h-5 w-5" />
+                </ListItemPrefix>
+                {pending ? 'Logging out…' : 'Log out'}
+            </ListItem>
+        </List>
+        {failed ? (
+            <p role="alert" className="px-3 pt-1 text-xs text-destructive">
+                Could not log out. Try again.
+            </p>
+        ) : null}
+    </div>
+)
 
 const NavigationBody = ({
     menu,
@@ -189,6 +223,27 @@ const SideBar = ({
     const uploading = useManagedUploadGuard()
     const [uploadBlockedOpen, setUploadBlockedOpen] = useState(false)
     const blockedFocusRef = useRef<HTMLElement | null>(null)
+    const queryClient = useQueryClient()
+    const authQuery = useAuthStatus()
+    const logoutMutation = useMutation({
+        mutationFn: authApi.logout,
+        onSuccess: () => {
+            // Drop everything cached for the old session but keep the auth query itself, so the
+            // app gate (which observes it) switches to the login page.
+            queryClient.removeQueries({
+                predicate: (query) => query.queryKey[0] !== queryKeys.auth[0]
+            })
+            queryClient.setQueryData(queryKeys.auth, { enabled: true, authenticated: false })
+        }
+    })
+    const logoutSection = authQuery.data?.enabled ? (
+        <LogoutSection
+            pending={logoutMutation.isPending}
+            disabled={logoutMutation.isPending || uploading}
+            failed={logoutMutation.isError}
+            onLogout={() => logoutMutation.mutate()}
+        />
+    ) : null
 
     useEffect(() => {
         const desktopMedia = window.matchMedia('(min-width: 64rem)')
@@ -267,6 +322,7 @@ const SideBar = ({
                         onToggleTraining={() => setOpenTraining((current) => !current)}
                         onSelectMenu={selectMenu}
                     />
+                    {logoutSection}
                 </SheetContent>
             </Sheet>
             {collapsed ? (
@@ -318,6 +374,7 @@ const SideBar = ({
                     onToggleTraining={() => setOpenTraining((current) => !current)}
                     onSelectMenu={selectMenu}
                 />
+                {logoutSection}
             </Card>
             <AlertDialog open={uploadBlockedOpen} onOpenChange={setUploadBlockedOpen}>
                 <AlertDialogContent
