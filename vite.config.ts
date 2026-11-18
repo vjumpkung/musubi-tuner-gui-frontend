@@ -19,7 +19,8 @@ export default defineConfig(({ mode }) => {
                 // Forward API calls to the FastAPI backend during development.
                 '/api': {
                     target: env.VITE_API_PROXY_TARGET || 'http://127.0.0.1:8000',
-                    changeOrigin: true
+                    changeOrigin: true,
+                    ws: true
                 }
             }
         },
