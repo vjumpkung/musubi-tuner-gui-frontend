@@ -11,6 +11,10 @@ The GUI backend is a single FastAPI service that covers three areas:
 The frontend reads the base URL from `VITE_API_BASE_URL`; when it is unset, requests are sent to
 the frontend origin.
 
+The server can optionally require a password (see [Authentication](#authentication)), pushes
+state changes to the frontend over Socket.IO (see [Realtime (Socket.IO)](#realtime-socketio)),
+and exposes a curated slice of this API to AI clients through MCP (see [MCP](#mcp)).
+
 ## Persistence (async SQLite)
 
 Dataset configs and training jobs are persisted in a single SQLite database accessed
@@ -84,6 +88,8 @@ Rules:
 - The training queue's start/pause state is persisted in `app_settings` under
   `training_queue_state` and restored on restart. On first boot it is `paused`, so nothing runs
   until the user starts the queue.
+- The random secret that signs login session cookies is persisted in `app_settings` under
+  `auth_session_secret`, so sessions survive a server restart.
 
 ## Downloads
 
@@ -188,8 +194,10 @@ Resolved output paths are reserved until the job's task finishes. Overlapping bu
 `GET /api/downloads`
 
 Return HTTP `200` with all in-memory download jobs, newest first. The frontend fetches this list
-whenever the Downloads screen mounts and polls it every 1.5 seconds while any job is `queued` or
-`running`, so switching screens does not lose active or terminal download state.
+whenever the Downloads screen mounts, so switching screens does not lose active or terminal
+download state. While the realtime socket is connected, it keeps the list current from
+`download:update` events; while the socket is disconnected, it polls the list every 1.5 seconds
+whenever any job is `queued` or `running`.
 
 ### Read job status
 
@@ -208,7 +216,8 @@ Return HTTP `200` with the current job:
 }
 ```
 
-The frontend polls this route every 1.5 seconds while the status is `queued` or `running`.
+The frontend does not call this route; it tracks downloads through the list endpoint and
+`download:update` events. It remains available to scripts and MCP clients (`get_download`).
 
 ### Cancel a job
 
@@ -501,8 +510,11 @@ running job. After a successful response, the frontend navigates directly to Job
 
 ### Read status and logs
 
-`GET /api/training/jobs/{id}` returns the job object. The frontend polls it every 1.5 seconds
-while the status is `queued` or `running`, the same cadence as downloads.
+`GET /api/training/jobs/{id}` returns the job object. The frontend does not poll this route; it
+reads jobs from `GET /api/training/jobs` and `GET /api/training/queue` and keeps both current from
+`job:update`, `job:removed`, `jobs:changed`, and `queue:update` events. While the realtime socket
+is disconnected, it polls `GET /api/training/queue` every 1.5 seconds on the training pages, and
+`GET /api/training/jobs` and `GET /api/training/queue` every 5 seconds on the Jobs & logs page.
 
 `GET /api/training/jobs/{id}/logs?offset=0` returns a chunk of the combined stdout/stderr log
 starting at byte `offset`:
@@ -516,16 +528,21 @@ starting at byte `offset`:
 }
 ```
 
-The frontend keeps `next_offset` and polls for appended output; `eof` is `true` once the job is
-terminal and the full log has been returned. Cap each response (for example 64 KiB) so a long
+The frontend keeps `next_offset` and reads appended output; `eof` is `true` once the job is
+terminal and the full log has been returned. While the realtime socket is connected, appended
+output arrives as `job:log` events and the frontend only calls this route to catch up (the first
+read, a gap in offsets, a reconnect, or when the job finishes). While the socket is disconnected,
+it polls this route every 5 seconds until `eof`. Cap each response (for example 64 KiB) so a long
 training run never produces an unbounded payload.
 
 ### Download LoRAs and their training config
 
 `GET /api/training/jobs/{id}/artifacts` finds the final `{outputName}.safetensors` file and every
 completed `{outputName}-*.safetensors` checkpoint in the job's validated `outputDir`. A running
-job exposes checkpoints as they are saved; a queued job returns an empty list. Numeric suffixes
-are parsed as epoch numbers so the frontend can present each saved epoch separately:
+job exposes checkpoints as they are saved; a queued job returns an empty list. While a job runs,
+the frontend refreshes this list whenever the selected job's status or epoch changes and every
+30 seconds while the socket is connected, or every 5 seconds while it is disconnected. Numeric
+suffixes are parsed as epoch numbers so the frontend can present each saved epoch separately:
 
 ```json
 {
@@ -599,6 +616,127 @@ A single asyncio worker task owns the queue:
 Concurrency is 1 by default; a `MAX_CONCURRENT_TRAINING_JOBS` setting may raise it for multi-GPU
 hosts, but the default contract is strictly serial.
 
+## Authentication
+
+Password protection is optional. It is enabled only when the backend runs with the
+`MUSUBI_GUI_PASSWORD` environment variable set; otherwise every endpoint is open and the frontend
+never shows a login page.
+
+| Method | Route              | Purpose                                                              |
+| ------ | ------------------ | -------------------------------------------------------------------- |
+| `GET`  | `/api/auth/status` | Public. Returns `{ "enabled": boolean, "authenticated": boolean }`   |
+| `POST` | `/api/auth/login`  | Public. Body `{ "password": "..." }`                                 |
+| `POST` | `/api/auth/logout` | Public. Clears the session cookie and returns `204`                  |
+
+`status` returns `{ "enabled": false, "authenticated": true }` when authentication is disabled.
+A successful `login` returns `200 { "enabled": true, "authenticated": true }` and sets the
+`musubi_gui_session` cookie (`HttpOnly`, `SameSite=Lax`, valid for 7 days, `Secure` over HTTPS).
+A wrong password returns `401 { "detail": "Incorrect password" }`. Failed attempts are delayed by
+one second and attempts made during the delay return `429` with `Retry-After: 1`.
+
+When authentication is enabled, every route under `/api/` except `/api/auth/` (including
+`/api/socket.io/`), plus `/mcp`, `/openapi.json`, `/docs`, and `/redoc`, requires either the
+session cookie or an `Authorization: Bearer <password>` header; otherwise the response is
+`401 { "detail": "Authentication required" }`. The built frontend itself stays public so the login
+page can load. A `POST`, `PUT`, `PATCH`, or `DELETE` authenticated by the cookie must also carry an
+`X-Requested-With` header, or it gets `403 { "detail": "Missing X-Requested-With header" }`;
+Bearer-authenticated requests and the Socket.IO transport are exempt.
+
+Frontend behavior:
+
+- The shared axios client sends credentials (`withCredentials`) and a default
+  `X-Requested-With: XMLHttpRequest` header on every request.
+- On startup the app calls `GET /api/auth/status`. When `enabled` is `true` and `authenticated` is
+  `false`, it shows the login page instead of the app. If the status request fails (for example a
+  `404` from an older backend without authentication), it renders the app without realtime
+  updates.
+- Any `401` from a route outside `/api/auth/` (an expired session) switches the app back to the
+  login page.
+- After login, the app reloads its data and starts the realtime socket. The sidebar shows a
+  **Log out** button only when authentication is enabled; it calls `POST /api/auth/logout`,
+  discards cached data, and returns to the login page.
+- The login page reports `401` as "Incorrect password" and `429` as a request to wait a moment.
+
+## Realtime (Socket.IO)
+
+The backend pushes state changes over Socket.IO so the frontend does not have to poll. The
+endpoint is `/api/socket.io` on the same origin as the API (the Vite dev proxy forwards it with
+`ws: true`), and the client uses the default transports (HTTP long-polling first, then a
+WebSocket upgrade). It uses the same authentication as the API; a handshake without valid
+credentials is rejected. Browser origins must match the request `Host` (or `X-Forwarded-Host`)
+or be listed in `MUSUBI_GUI_CORS_ORIGINS`.
+
+Events sent from the server, each emitted right after the corresponding database write commits:
+
+| Event              | Payload                                                         | Room                |
+| ------------------ | --------------------------------------------------------------- | ------------------- |
+| `queue:update`     | Queue object (`state`, `queued`, `running_job_id`)              | all clients         |
+| `job:update`       | Training job object                                             | all clients         |
+| `job:removed`      | `{ "id": "..." }`                                               | all clients         |
+| `jobs:changed`     | `{}` — job list membership or order changed; refetch the list   | all clients         |
+| `download:update`  | Download job object                                             | all clients         |
+| `job:log`          | `{ "job_id", "offset", "next_offset", "content" }`              | `job-log:{job_id}`  |
+| `system:resources` | `GET /api/system/resources` snapshot, every 5 seconds           | `system`            |
+
+Events sent from the client:
+
+- `subscribe` / `unsubscribe` with `{ "topic": "system" }` or
+  `{ "topic": "job-log", "job_id": "..." }` join or leave the `system` and `job-log:{job_id}`
+  rooms. Other payloads are ignored. Rooms are lost when the socket reconnects, so the client
+  re-sends all active subscriptions on every `connect`.
+
+`job:log` chunks use the same byte offsets as `GET /api/training/jobs/{id}/logs`. Appended output
+is coalesced for up to 250 ms into chunks of roughly 64 KiB at most.
+
+How the frontend uses the events (`src/hooks/useRealtime.ts`, `src/api/realtime.ts`):
+
+- `useRealtimeSync()` connects the socket once the app is authenticated and writes events straight
+  into the TanStack Query cache: `queue:update` replaces the queue, `job:update` and
+  `download:update` update the matching list entry (new ids are prepended) and
+  `job:update` also updates the single-job query, `job:removed` removes the job, and `jobs:changed`
+  invalidates the jobs list. A list that has not been loaded yet is left alone.
+- If a socket event updates a query while an HTTP fetch for the same key is in flight, that key is
+  refetched once the fetch settles, so an older HTTP response cannot overwrite newer socket data.
+- On every `connect`, the jobs, queue, and downloads queries are invalidated and all active
+  subscriptions are re-sent.
+- The Jobs & logs page subscribes to `job-log` for the selected job and the system monitor
+  subscribes to `system`.
+- Polling is only a fallback. Each query keeps its initial HTTP fetch, and its polling interval is
+  switched off while the socket is connected and restored when it is not:
+
+  | Data                                   | Interval while disconnected                          |
+  | -------------------------------------- | ---------------------------------------------------- |
+  | Download list                          | 1.5 s, only while a job is `queued` or `running`     |
+  | Training queue (training pages)        | 1.5 s                                                |
+  | Jobs, queue, and logs (Jobs & logs)    | 5 s (logs stop at `eof`)                             |
+  | Artifacts of a running job             | 5 s (30 s while connected, plus status/epoch changes) |
+  | System resources                       | 5 s                                                  |
+
+## MCP
+
+The backend serves an [MCP](https://modelcontextprotocol.io/) endpoint over Streamable HTTP at
+`/mcp`, on the same port as the API, so AI clients can inspect and drive the GUI. It is not used
+by the frontend. When `MUSUBI_GUI_PASSWORD` is set, clients must send
+`Authorization: Bearer <password>`; without a password no header is needed.
+
+```bash
+claude mcp add --transport http musubi-tuner-gui http://127.0.0.1:8000/mcp --header "Authorization: Bearer <password>"
+```
+
+Tools map onto the REST endpoints above and share their validation and errors:
+
+| Tool                                                                                                   | Endpoint                                              |
+| ------------------------------------------------------------------------------------------------------ | ----------------------------------------------------- |
+| `get_system_resources`                                                                                 | `GET /api/system/resources`                           |
+| `list_downloads`, `get_download`, `start_download`, `cancel_download`                                  | Downloads endpoints                                   |
+| `list_dataset_configs`, `get_dataset_config`, `validate_dataset_config`, `create_dataset_config`       | `GET`/`POST /api/datasets`, `GET /api/datasets/{id}`, `POST /api/datasets/{id}/validate` |
+| `get_training_queue`, `start_training_queue`, `pause_training_queue`                                   | Queue control endpoints                               |
+| `list_training_jobs`, `get_training_job`, `create_training_job`, `cancel_training_job`, `retry_training_job`, `reorder_training_job`, `get_training_job_logs`, `list_training_job_artifacts` | Training job endpoints |
+| `list_download_models`, `list_training_profiles`                                                       | Read-only catalogs (the `script_id` and `profile_id` values the other tools accept) |
+
+There are no tools for deleting datasets or jobs, uploading managed datasets, importing or
+exporting TOML, or downloading checkpoints.
+
 ## Errors and validation
 
 Return FastAPI's standard error shape so the frontend can display it:
@@ -618,6 +756,11 @@ Return FastAPI's standard error shape so the frontend can display it:
   `{"detail": "Invalid download request"}` for invalid download requests without echoing inputs.
 - Return `503` when Python, `accelerate`, required training scripts, or required server
   configuration is absent. Downloads require no bash or Hugging Face CLI installation.
+- When password authentication is enabled, return `401 {"detail": "Authentication required"}` for a
+  protected route without valid credentials, `403 {"detail": "Missing X-Requested-With header"}`
+  for a cookie-authenticated mutating request without that header, and `429` with
+  `Retry-After: 1` when password attempts are being throttled (see
+  [Authentication](#authentication)).
 - Resolve destinations and output/logging directories and require them to be inside a configured
   root. Do not allow the client to select arbitrary server filesystem locations. Dataset source
   directories are only read, never created or deleted, and are checked via the validate
@@ -627,7 +770,8 @@ Return FastAPI's standard error shape so the frontend can display it:
 - Preserve training stdout/stderr in a bounded job log for diagnostics. Never return Hugging Face
   tokens or environment secrets.
 - If the API is hosted on a different origin, allow the Vite frontend origin with FastAPI CORS
-  middleware and set `VITE_API_BASE_URL` to the API origin at frontend build time.
+  middleware (with credentials allowed, because the frontend sends the session cookie) and set
+  `VITE_API_BASE_URL` to the API origin at frontend build time.
 
 Download progress combines the number of installed files with the current file's byte fraction
 when its content length is available. `current_file` is the catalog output path and `message`
