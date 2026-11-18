@@ -306,19 +306,6 @@ export const downloadModels: DownloadModel[] = [
         trainingScripts: ['z_image_turbo_training_script.sh']
     },
     {
-        id: 'z-image-turbo',
-        name: 'Z-Image Turbo',
-        family: 'Z-Image',
-        task: 'Image',
-        precision: 'BF16',
-        description: 'Z-Image Turbo checkpoint with AE VAE and Qwen3 4B encoder.',
-        files: [
-            'diffusion_models/z_image_turbo_bf16.safetensors',
-            'vae/ae.safetensors',
-            'text_encoders/qwen_3_4b.safetensors'
-        ]
-    },
-    {
         id: 'minimax-h3-fl2va-bf16',
         name: 'MiniMax H3 FL2VA BF16',
         family: 'MiniMax H3',
